@@ -6,6 +6,7 @@ using System.Text;
 using System.Windows.Forms;
 using System.IO.Ports;
 using System.Diagnostics;
+using System.Web.Script.Serialization;
 using SmcEslLib;
 using static EslUdpTest.Tools;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -18,6 +19,7 @@ using ZXing;
 using System.Globalization;
 using System.Net.Sockets;
 using System.Net;
+using System.Net.NetworkInformation;
 
 namespace SmcEslSystem
 {
@@ -72,6 +74,7 @@ namespace SmcEslSystem
         string macaddress;
         string scancodeas;
         string selectIndex;
+        string selectSize;
         string dialogtext;
         string headertextall;
         string BeaconDateS;
@@ -95,6 +98,7 @@ namespace SmcEslSystem
         private static System.Windows.Forms.Timer ConnectBleTimeOut = new System.Windows.Forms.Timer();
         static System.Windows.Forms.Timer DisConnectTimer = new System.Windows.Forms.Timer();
         static System.Windows.Forms.Timer BleWriteTimer = new System.Windows.Forms.Timer();//寫入電子紙，怕沒回馬需要多送
+    //    static System.Windows.Forms.Timer ReadTypeTimer = new System.Windows.Forms.Timer();
         private static System.Threading.ManualResetEvent connectDone = new System.Threading.ManualResetEvent(false);
 
         static Timer COMPORTTimer = new Timer();
@@ -119,8 +123,12 @@ namespace SmcEslSystem
         List<string> firstbuildlistID = new List<string>();
         List<string> leftmosueESL = new List<string>();
         List<string> ESLFormat = new List<string>();
+        List<string> ESL29Format = new List<string>();
+        List<string> ESL42Format = new List<string>();
         List<string> ESLFormatUpdate = new List<string>();
         List<string> ESLSaleFormat = new List<string>();
+        List<string> ESLSale29Format = new List<string>();
+        List<string> ESLSale42Format = new List<string>();
         List<string> ESLSaleFormatUpdate = new List<string>();
         List<List<string>> ESLUpdaateFail = new List<List<string>>();
         List<string> ESLFailData = new List<string>();
@@ -162,6 +170,9 @@ namespace SmcEslSystem
         int totalwritecount = 0;
         int checkconnectcount = 0;
         int totalRows = 0;
+
+        string beaconsales = "";
+        string beacondays = "";
         Boolean Runtime = false;
         Boolean down = false;
         Boolean sale = false;
@@ -171,6 +182,8 @@ namespace SmcEslSystem
         Boolean checkClick = false;
         Boolean EslStyleChangeUpdate = false;
         Boolean checkESLRSSIClick = false;
+        PictureBox pictureBox1 = new PictureBox();
+        
 
         Image originalImage;
         int beacon_index = 0;
@@ -180,14 +193,16 @@ namespace SmcEslSystem
         Excel.Worksheet mySheet;
 
 
-
         Stopwatch stopwatch = new Stopwatch();//引用stopwatch物件
 
         public Form1()
         {
             InitializeComponent();
             this.progressBar1.Visible = false;
-
+            pictureBox1.BackColor = Color.White;
+            pictureBox1.Size = new Size(212,104);
+            pictureBox1.Location = new Point(235, 81);
+            panel1.Controls.Add(pictureBox1);
             dataGridView1.Anchor = AnchorStyles.Left | AnchorStyles.Bottom | AnchorStyles.Right | AnchorStyles.Top;
             dataGridView1.AutoResizeColumns();
             dataGridView1.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
@@ -239,12 +254,16 @@ namespace SmcEslSystem
             CheckESLStateTimer.Tick+= new EventHandler(CheckESLState);
 
             CheckBeaconTimer.Tick += new EventHandler(BeaconCheckUpdate);
-            ConnectBleTimeOut.Interval = (10 * 1000);
+            ConnectBleTimeOut.Interval = (20 * 1000);
             ConnectBleTimeOut.Tick += new EventHandler(ConnectBle_TimeOut);
             DisConnectTimer.Tick += new EventHandler(DisConnectBle);
             DisConnectTimer.Interval = 4000;
             BleWriteTimer.Interval = (1 * 1000);
             BleWriteTimer.Tick += new EventHandler(WriteESL_TimeOut);
+            //ReadTypeTimer.Interval = (1 * 1000);
+          //  ReadTypeTimer.Tick += new EventHandler(ReadTypeTimer_TimeOut);
+
+
             CheckESLLoadTimer.Tick += new EventHandler(CheckESLLoad);
             ScanTimer.Tick += new EventHandler(TimerEventProcessor);
             button4.Visible = false;
@@ -348,6 +367,7 @@ namespace SmcEslSystem
         }
         private void AP_Scan(object sender, EventArgs e)
         {
+            Console.WriteLine("-----------1");
             APScanDataInvoker stc = new APScanDataInvoker(ApScanReceiveData);
             this.BeginInvoke(stc, e);
         }
@@ -355,8 +375,10 @@ namespace SmcEslSystem
         private void ApScanReceiveData(EventArgs e)
         {
           ClearSocket();
-          //  dataGridView5.Columns.Clear();
-            List<AP_Information> AP = (e as EslUdpTest.Tools.ApScanEventArgs).data;
+            Console.WriteLine("-----------2");
+            //  dataGridView5.Columns.Clear();
+
+            List<AP_Information> AP = (e as ApScanEventArgs).data;
             /*    dataGridView5.Columns.Clear();
                 dataGridView5.ColumnCount = 4;
                 dataGridView5.Columns[0].Name = "APName";
@@ -364,91 +386,95 @@ namespace SmcEslSystem
                 dataGridView5.Columns[2].Name = "Port";
                 dataGridView5.Columns[3].Name = "State";
                 dataGridView5.Rows.Add("未指定");*/
-            int activeAP=0;
-            int APListData=0;
-            bool apisnull=false;
-            List<Page> lEmp = new List<Page>();
-            if (dataGridView5.Rows.Count <2) {
-                DataTable dt = dataGridView5.DataSource as DataTable;
-                dt.Rows.Add(new object[] {"未指定" });
-            }
-           
-         /*       foreach (AP_Information mAP_Information in AP)
-                {
-                foreach (DataGridViewRow dr in this.dataGridView5.Rows)
-                    {
-                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == mAP_Information.AP_IP)
-                        {
-                        apisnull = true;
-                        }
-                    }
-                if (!apisnull) {
-                    DataTable dt = dataGridView5.DataSource as DataTable;
-                    dt.Rows.Add(new object[] { mAP_Information.AP_Name, mAP_Information.AP_IP, "1200" });
-                    mExcelData.dataGridViewRowCellUpdate(dataGridView5, 1, dataGridView5.Rows.Count-2, false, openExcelAddress, excel, excelwb, mySheet);
-                    mExcelData.dataGridViewRowCellUpdate(dataGridView5, 2, dataGridView5.Rows.Count - 2, false, openExcelAddress, excel, excelwb, mySheet);
-                    mExcelData.dataGridViewRowCellUpdate(dataGridView5, 3, dataGridView5.Rows.Count-2, false, openExcelAddress, excel, excelwb, mySheet);
-                }
-                apisnull = false;
-                }
-            foreach (DataGridViewRow dr5 in this.dataGridView5.Rows)
-            {
-              
-                apisnull = false;
-                foreach (AP_Information mAP_Information in AP)
-                {
-                    Console.WriteLine("mAP_Information.AP_IP"+ mAP_Information.AP_IP+ "dr5.Cells[2].Value.ToString()"+ dr5.Cells[2].Value.ToString());
-                    if (dr5.Cells[2].Value != null && dr5.Cells[2].Value.ToString() == mAP_Information.AP_IP)
-                    {
-                        dr5.Cells[4].Value = "已啟用";
-                        activeAP = activeAP + 1;
-                        apisnull = true;
-                    }
+            //-----ININ
+                 int activeAP=0;
+                 int APListData=0;
+                 bool apisnull=false;
+                 List<Page> lEmp = new List<Page>();
+                 if (dataGridView5.Rows.Count <2) {
+                     DataTable dt = dataGridView5.DataSource as DataTable;
+                     dt.Rows.Add(new object[] {"未指定" });
+                 }
+            //-----ININ
+            /*       foreach (AP_Information mAP_Information in AP)
+                   {
+                   foreach (DataGridViewRow dr in this.dataGridView5.Rows)
+                       {
+                       if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == mAP_Information.AP_IP)
+                           {
+                           apisnull = true;
+                           }
+                       }
+                   if (!apisnull) {
+                       DataTable dt = dataGridView5.DataSource as DataTable;
+                       dt.Rows.Add(new object[] { mAP_Information.AP_Name, mAP_Information.AP_IP, "1200" });
+                       mExcelData.dataGridViewRowCellUpdate(dataGridView5, 1, dataGridView5.Rows.Count-2, false, openExcelAddress, excel, excelwb, mySheet);
+                       mExcelData.dataGridViewRowCellUpdate(dataGridView5, 2, dataGridView5.Rows.Count - 2, false, openExcelAddress, excel, excelwb, mySheet);
+                       mExcelData.dataGridViewRowCellUpdate(dataGridView5, 3, dataGridView5.Rows.Count-2, false, openExcelAddress, excel, excelwb, mySheet);
+                   }
+                   apisnull = false;
+                   }
+               foreach (DataGridViewRow dr5 in this.dataGridView5.Rows)
+               {
 
-                }
+                   apisnull = false;
+                   foreach (AP_Information mAP_Information in AP)
+                   {
+                       Console.WriteLine("mAP_Information.AP_IP"+ mAP_Information.AP_IP+ "dr5.Cells[2].Value.ToString()"+ dr5.Cells[2].Value.ToString());
+                       if (dr5.Cells[2].Value != null && dr5.Cells[2].Value.ToString() == mAP_Information.AP_IP)
+                       {
+                           dr5.Cells[4].Value = "已啟用";
+                           activeAP = activeAP + 1;
+                           apisnull = true;
+                       }
 
-               if (!apisnull) {
-                    dr5.Cells[4].Value = "";
-                    apisnull = false;
+                   }
 
-                }
+                  if (!apisnull) {
+                       dr5.Cells[4].Value = "";
+                       apisnull = false;
+
+                   }
 
 
-                APListData = APListData + 1;
+                   APListData = APListData + 1;
 
-            }
-            label9.Text = activeAP + "/" + APListData;*/
-         // mExcelData.DataGridview5Update(dataGridView5,false,openExcelAddress,excel,excelwb,mySheet);
+               }
+               label9.Text = activeAP + "/" + APListData;*/
+            // mExcelData.DataGridview5Update(dataGridView5,false,openExcelAddress,excel,excelwb,mySheet);
+            //----------ININ
+                    foreach (AP_Information mAP_Information in AP)
+                 {
+                     //dataGridView5.Rows.Add(mAP_Information.AP_Name, mAP_Information.AP_IP,"1200","已啟用");
+                     richTextBox1.AppendText("IP = " + mAP_Information.AP_IP + " Mac = " + mAP_Information.AP_MAC_Address + " Name = " + mAP_Information.AP_Name);
+                     richTextBox1.AppendText("\n");
+                     APList.Add(mAP_Information.AP_IP);
+                     Console.WriteLine("IP = " + mAP_Information.AP_IP);
+                    // ClearSocket();
+                     Socket client = null;
+                         string ipp = mAP_Information.AP_IP.ToString();
+                         client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);  // TCP
+                                                                                                                //client = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp); // UDP
+                         IPAddress ipAddress = IPAddress.Parse(ipp);
+                 IPEndPoint remoteEP = new IPEndPoint(ipAddress, 1200);
+                //IPEndPoint remoteEP = new IPEndPoint(ipAddress, 8899);
+                client.BeginConnect(remoteEP, new AsyncCallback(ConnectCallback), client);
+                client.ReceiveTimeout = 200;
+               // connectDone.WaitOne();
+                         client = null;
+                  //   System.Threading.Thread.Sleep(100);
+                   //  AP_ListBox.SelectedIndex = 0;
+                    // AP_IP_Label.Text = AP_ListBox.SelectedItem.ToString();
+                     // AP_ListBox.Items.Add(mAP_Information.AP_IP);
+                 }
+            //    System.Threading.Thread.Sleep(1000);
 
-                foreach (AP_Information mAP_Information in AP)
-            {
-                //dataGridView5.Rows.Add(mAP_Information.AP_Name, mAP_Information.AP_IP,"1200","已啟用");
-                richTextBox1.AppendText("IP = " + mAP_Information.AP_IP + " Mac = " + mAP_Information.AP_MAC_Address + " Name = " + mAP_Information.AP_Name);
-                richTextBox1.AppendText("\n");
-                APList.Add(mAP_Information.AP_IP);
-                Console.WriteLine("IP = " + mAP_Information.AP_IP);
-               // ClearSocket();
-                Socket client = null;
-                    string ipp = mAP_Information.AP_IP.ToString();
-                    client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);  // TCP
-                                                                                                           //client = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp); // UDP
-                    IPAddress ipAddress = IPAddress.Parse(ipp);
-                    IPEndPoint remoteEP = new IPEndPoint(ipAddress, 1200);
-                    client.BeginConnect(remoteEP, new AsyncCallback(ConnectCallback), client);
-                    connectDone.WaitOne();
-                    client = null;
-                System.Threading.Thread.Sleep(100);
-              //  AP_ListBox.SelectedIndex = 0;
-               // AP_IP_Label.Text = AP_ListBox.SelectedItem.ToString();
-                // AP_ListBox.Items.Add(mAP_Information.AP_IP);
-            }
-           System.Threading.Thread.Sleep(1000);
+                 foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                 {
+                    kvp.Value.mSmcEsl.startScanBleDevice();
 
-            foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
-            {
-               kvp.Value.mSmcEsl.startScanBleDevice();
-
-            }
+                 }
+            //---------ININ
             // datagridview1curr = 2;
             //  aaa(1, false, 0);
         }
@@ -849,7 +875,7 @@ namespace SmcEslSystem
                 string eslAPNoSetMsg = null;
                 dataGridView1.ClearSelection();
                 // mSmcEsl.DisConnectBleDevice();
-                dataGridView1.Enabled = false;
+                
                 if (dataGridView1.RowCount < 2)
                 {
                     MessageBox.Show("請先載入資料表");
@@ -884,6 +910,7 @@ namespace SmcEslSystem
                            }
                        }*/
                     Console.WriteLine("ForeColor" + dr.Cells[1].Style.ForeColor.Name.ToString());
+                    Console.WriteLine("ForeColor" + dr.Cells[1].Style.ForeColor.Name);
                     if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() != "" && dr.Cells[1].Style.ForeColor != Color.Black && dr.Cells[1].Style.ForeColor.Name != "0")
                     {
                         if (dr.Cells[1].Value.ToString() != "")
@@ -891,6 +918,7 @@ namespace SmcEslSystem
 
                             dr.Selected = false;
                             int aaaa = dr.Cells[1].Value.ToString().Length;
+                            Console.WriteLine("aaaa" + dr.Cells[1].Value.ToString().Length);
                             if (aaaa > 14)
                             {
 
@@ -1013,6 +1041,8 @@ namespace SmcEslSystem
                                       }*/
                                     Page1 mPageC = new Page1();
 
+
+                                   
                                     Console.WriteLine("MT WRITE QQW" + drrow[bb]);
                                     UpdateESLDen.Text = (Convert.ToInt32(UpdateESLDen.Text) + 1).ToString();
                                     mPageC.no = (dr.Index + 1).ToString();
@@ -1356,15 +1386,22 @@ namespace SmcEslSystem
 
                 if (PageList.Count > 0)
                 {
+
+                    foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                    {
+
+                        kvp.Value.mSmcEsl.stopScanBleDevice();
+                    }
+
+                    System.Threading.Thread.Sleep(1000);
                     //int tt = 0;
+                    dataGridView1.Enabled = false;
                     testest = true;
                     onlockedbutton(testest);
                     //pictureBox4.Visible = true;
+                    ProgressBarVisible(PageList.Count);
                     UpdateESLDen.Text = PageList.Count.ToString();
-                    progressBar1.Maximum = PageList.Count;
-                    progressBar1.Minimum = 0;
-                    progressBar1.Step = 1;
-                    progressBar1.Visible = true;
+                
                     List<string> RunAPList = new List<string>();
 
 
@@ -1398,7 +1435,7 @@ namespace SmcEslSystem
 
 
                                         int Blcount = mPage1.BleAddress.Length;
-                                        Bitmap bmp;
+                                  /*      Bitmap bmp;
                                         if (mPage1.onsale == "V")
                                         {
                                             bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
@@ -1410,7 +1447,7 @@ namespace SmcEslSystem
                                             bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
                                               mPage1.specification, mPage1.price, mPage1.Special_offer,
                                                mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
-                                        }
+                                        }*/
 
                                         int numVal = Convert.ToInt32(mPage1.no) - 1;
                                         Console.WriteLine("mPage1.no" + mPage1.no);
@@ -1418,17 +1455,27 @@ namespace SmcEslSystem
                                         aaa(datagridview1curr, true, numVal);
                                         dataGridView1.Rows[numVal].Cells[17].Value = DateTime.Now.ToString();
                                         mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, numVal, false, openExcelAddress, excel, excelwb, mySheet);
-                                        pictureBoxPage1.Image = bmp;
+                                     //   pictureBoxPage1.Image = bmp;
 
                                         Console.WriteLine("ININ");
-                                        kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress);
+                                        deviceIPData = mPage1.APLink;
+                                       // ConnectBleTimeOut.Start();
+                                        kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+
+                                        mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                                        mPage1.TimerConnect.Interval = (20 * 1000);
+                                        mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                                        mPage1.TimerSeconds = new Stopwatch();
+                                        mPage1.TimerConnect.Start();
+                                        mPage1.TimerSeconds.Start();
+                                        //    kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                        // kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);
+                                        // kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress);
                                         //System.Threading.Thread.Sleep(1000);
-                                        EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3);
-                                        pictureBoxPage1.Image = bmp;
+                                        //    EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                                        //   mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3,0);
                                         richTextBox1.Text = richTextBox1.Text + PageList[i].usingAddress + "  嘗試連線中請稍候... \r\n";
-                                        System.Threading.Thread.Sleep(1000);
+                                    //    System.Threading.Thread.Sleep(1000);
                                     }
                                 }
                                 break;
@@ -1439,7 +1486,6 @@ namespace SmcEslSystem
                     //  mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
                     macaddress = PageList[listcount].BleAddress;
                     // richTextBox1.Text = mPage1.BleAddress + "  嘗試連線中請稍候... \r\n";
-                    ProgressBarVisible(PageList.Count);
 
 
                 }
@@ -1551,7 +1597,7 @@ namespace SmcEslSystem
                 string tableName = "[工作表1$]";//在頁簽名稱後加$，再用中括號[]包起來
                 string sql = "select * from " + tableName;//SQL查詢
                 excel = new Excel.Application();
-                excelwb = excel.Workbooks.Open(openFileDialog1.FileName);
+                excelwb = excel.Workbooks.Open(@openFileDialog1.FileName);
                // excel.Application.Workbooks.Add(true);
                 mySheet = new Excel.Worksheet();
 
@@ -1590,20 +1636,20 @@ namespace SmcEslSystem
                     UpdateESLDen.Text = datalist.Rows.Count.ToString();
                 }
                     Console.WriteLine("datalist"+ datalist.Rows.Count);*/
-                Console.WriteLine("headertextall" + kk3.Rows.Count+","+kk3.Columns.Count);
+               // Console.WriteLine("headertextall" + kk3.Rows.Count+","+kk3.Columns.Count);
                 dataGridView2.DataSource = kk2;
                 dataGridView4.DataSource = kk3;
                 dataGridView5.DataSource = kk4;
                 dataGridView1.DataSource = kk;
                 dataGridView7.DataSource = kk5;
-                foreach (DataRow dr in kk5.Rows)
+           /*     foreach (DataRow dr in kk5.Rows)
                 {
                     foreach (DataColumn dc in kk5.Columns)
                     {
                         Console.WriteLine("ssssssssssssss" + dr[dc].ToString());
                        
                     }
-               }
+               }*/
 
                 BindESL.Text = "0";
                 if (dataGridView4.Rows.Count > 1)
@@ -1638,10 +1684,10 @@ namespace SmcEslSystem
                 //  mSmcEsl.onScanDeviceEven += new EventHandler(ScanDeviceEven); //掃描ble
                 DataGridViewImageColumn columnImage = new DataGridViewImageColumn();
                 columnImage.DefaultCellStyle.NullValue = null;
-                dgvc3.Width = 60;
+              /*  dgvc3.Width = 60;
                 dgvc3.Name = "狀態";
                 dgvc3.DefaultCellStyle.NullValue = null;
-                dgvc3.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                dgvc3.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;*/
                 this.dataGridView1.Columns.Insert(2, columnImage);
 
                 CountESLAll.Text = kk3.Rows.Count.ToString();
@@ -1762,7 +1808,6 @@ namespace SmcEslSystem
                 this.dataGridView5.Columns[4].ReadOnly = true;
                 this.dataGridView5.Columns[3].Visible = false;
 
-
                 this.dataGridView1.Columns[6].Frozen = true;
                 CheckBeaconTimer.Interval = 3500;
                 CheckBeaconTimer.Start();
@@ -1775,7 +1820,7 @@ namespace SmcEslSystem
                     headertextall = headertextall + this.dataGridView1.Columns[i].Name;
                 }
 
-                Console.WriteLine("headertextall" + headertextall);
+              //  Console.WriteLine("headertextall" + headertextall);
                 for (int ee = 0; ee < this.dataGridView2.ColumnCount; ee++)
                 {
                     if (ee != 0 && ee != 1 && ee != 2)
@@ -1793,11 +1838,11 @@ namespace SmcEslSystem
                 {
                     foreach (DataGridViewRow dr5 in this.dataGridView5.Rows)
                     {
-                            Console.WriteLine("OUOU" + dr5.Cells[5].Value);
+                          //  Console.WriteLine("OUOU" + dr5.Cells[5].Value);
                             if (dr5.Cells[5].Value != null && dr5.Cells[5].Value.ToString() == "") {
                                
                                 dr5.Cells[5].Value = 0;
-                                Console.WriteLine("ININ" + dr5.Cells[5].Value);
+                          //      Console.WriteLine("ININ" + dr5.Cells[5].Value);
                             }
                             
 
@@ -1815,13 +1860,13 @@ namespace SmcEslSystem
                     if (dr2.Cells[2].Value != null)
                     {
                         if(dr2.Cells[2].Value.ToString() == "V") {
-                            Console.WriteLine("HGEEGE"+ dr2.Cells[2].Value.ToString());
+                      //      Console.WriteLine("HGEEGE"+ dr2.Cells[2].Value.ToString());
                             for (int i = 0; i < dr2.Cells.Count; i++)
                         {
-                                Console.WriteLine(i+"dr2.Cells[i].Value" + dr2.Cells[i].Value);
+                    //            Console.WriteLine(i+"dr2.Cells[i].Value" + dr2.Cells[i].Value);
                                 if (i != 0) {
                            
-                                           Console.WriteLine("HGEEGE");
+                                         //  Console.WriteLine("HGEEGE");
                                 if (i == 1)
                                 {
                                     styleName = dr2.Cells[1].Value.ToString();
@@ -1830,14 +1875,23 @@ namespace SmcEslSystem
                                 {
                                         if (dr2.Cells[i].Value != null && dr2.Cells[i].Value.ToString() != "")
                                         {
-                                            ESLFormat.Add(dr2.Cells[i].Value.ToString());
-                                            Console.WriteLine("ESLFormat" + dr2.Cells[i].Value.ToString());
+                                            if(dr2.Cells[4].Value.ToString()=="1")
+                                                ESL29Format.Add(dr2.Cells[i].Value.ToString());
+                                            else if (dr2.Cells[4].Value.ToString() == "2")
+                                                ESL42Format.Add(dr2.Cells[i].Value.ToString());
+                                            else 
+                                                ESLFormat.Add(dr2.Cells[i].Value.ToString());
+                                            // Console.WriteLine("ESLFormat" + dr2.Cells[i].Value.ToString());
                                         }
                                         else
                                         {
                                             if(i<dataGridView2.ColumnCount)
-                                                if (dr2.Cells[i -1].Value.ToString() != "")
+                                                if (dr2.Cells[i -1].Value.ToString() != ""&&dr2.Cells[4].Value.ToString() == "0")
                                                     ESLFormat.Add(dr2.Cells[i].Value.ToString());
+                                                else if (dr2.Cells[i - 1].Value.ToString() != "" && dr2.Cells[4].Value.ToString() == "1")
+                                                    ESL29Format.Add(dr2.Cells[i].Value.ToString());
+                                                else if (dr2.Cells[i - 1].Value.ToString() != "" && dr2.Cells[4].Value.ToString() == "2")
+                                                    ESL42Format.Add(dr2.Cells[i].Value.ToString());
                                         }
                                     }
                             
@@ -1870,14 +1924,23 @@ namespace SmcEslSystem
                                         {
                                         if (dr7.Cells[i].Value != null && dr7.Cells[i].Value.ToString() != "")
                                         {
-                                            ESLSaleFormat.Add(dr7.Cells[i].Value.ToString());
-                                                        Console.WriteLine("ESLSaleFormat" + dr7.Cells[i].Value.ToString());
+                                            if (dr7.Cells[4].Value.ToString() == "1")
+                                                ESLSale29Format.Add(dr7.Cells[i].Value.ToString());
+                                            else if (dr7.Cells[4].Value.ToString() == "2")
+                                                ESLSale42Format.Add(dr7.Cells[i].Value.ToString());
+                                            else
+                                                ESLSaleFormat.Add(dr7.Cells[i].Value.ToString());
+                                            //   Console.WriteLine("ESLSaleFormat" + dr7.Cells[i].Value.ToString());
                                         }
                                         else
                                         {
                                             if (i < dataGridView7.ColumnCount)
-                                                if (dr7.Cells[i - 1].Value.ToString() != "")
+                                                if (dr7.Cells[i - 1].Value.ToString() != "" && dr7.Cells[4].Value.ToString() == "0")
                                                     ESLSaleFormat.Add(dr7.Cells[i].Value.ToString());
+                                                else if (dr7.Cells[i - 1].Value.ToString() != "" && dr7.Cells[4].Value.ToString() == "1")
+                                                    ESLSale29Format.Add(dr7.Cells[i].Value.ToString());
+                                                else if (dr7.Cells[i - 1].Value.ToString() != "" && dr7.Cells[4].Value.ToString() == "2")
+                                                    ESLSale42Format.Add(dr7.Cells[i].Value.ToString());
                                         }
                                     }
 
@@ -1889,7 +1952,7 @@ namespace SmcEslSystem
                 }
 
 
-            }
+           
 
   
             testest = false;
@@ -1901,14 +1964,19 @@ namespace SmcEslSystem
                 dataGridView1.Enabled = true;
                 return;
             }
-            EslUdpTest.Tools tool = new EslUdpTest.Tools();
-            tool.onApScanEvent += new EventHandler(AP_Scan);
-            tool.SNC_GetAP_Info();
+               EslUdpTest.Tools tool = new EslUdpTest.Tools();
+                // Tools tool = new Tools();
+                Console.WriteLine("-----------0");
+                tool.onApScanEvent += new EventHandler(AP_Scan);
+               tool.SNC_GetAP_Info();
+
+
             //  Console.WriteLine("---");
             setLocalTime();
             //datagridview1curr = 2;
             datagridview1curr = 2;
-            
+            }
+
         }
 
 
@@ -2144,7 +2212,7 @@ namespace SmcEslSystem
                 }
                 if (canConvert == false && doubletype == false)//先商品條碼在墊子標籤
                 {
-                    Console.WriteLine("ssssssssssssss");
+                   // Console.WriteLine("ssssssssssssss");
                     Boolean maccheck = false;
                     foreach (string mac in MacAddressList)
                     {
@@ -2289,21 +2357,31 @@ namespace SmcEslSystem
             {
                 // System.Text.StringBuilder messageBoxCS = new System.Text.StringBuilder();
                 // messageBoxCS.AppendFormat("{0} = {1}", "ClickedItem", e.ClickedItem);
-                // messageBoxCS.AppendLine();
+                // messageBoxCS.AppendLine();t
                 //MessageBox.Show(messageBoxCS.ToString(), "ItemClicked Event");
+                List<string> sss = new List<string>();
                 foreach (DataGridViewRow dr in this.dataGridView1.Rows)
                 {
                     if (dr.Cells[3].Value!=null&&(bool)dr.Cells[3].Value) {
                         dr.Cells[21].Value = BeaconTimeS;
                         dr.Cells[22].Value = BeaconTimeE;
+                        dr.Cells[23].Value = beaconsales;
+                        sss.Add(dr.Cells[5].Value.ToString());
                         mExcelData.dataGridViewRowCellUpdate(dataGridView1, 21, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                         mExcelData.dataGridViewRowCellUpdate(dataGridView1, 22, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 23, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                     }
                 }
+                Console.WriteLine("BeaconTimeS:"+ BeaconTimeS+ "BeaconTimeE" + BeaconTimeE);
+                beacon_data_set(sss, BeaconTimeS, BeaconTimeE, beaconsales);
+
+
+
 
               //  if (BeaconList.Count > 0)
-               //     mSmcEsl.WriteBeaconData("ESL143AP01", BeaconList[beacon_index], false);
+              //     mSmcEsl.WriteBeaconData("ESL143AP01", BeaconList[beacon_index], false);
             }
+
             
 
 
@@ -2324,6 +2402,7 @@ namespace SmcEslSystem
 
                 string saletimemsg="";
                 string beaconmsg="";
+                List<string> nullbeacon = new List<string>();
                 //beaconAll CHECK=============================
                 foreach (DataGridViewRow dr in this.dataGridView1.Rows)
                 {
@@ -2336,6 +2415,7 @@ namespace SmcEslSystem
                         DateTime strDate = DateTime.ParseExact(start, format, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
                         DateTime endDate = DateTime.ParseExact(end, format, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
                         Console.WriteLine("start"+ start+ "endDate"+ endDate+ DateTime.Now);
+                     
                         if (DateTime.Compare(strDate, DateTime.Now) < 0 && DateTime.Compare(endDate, DateTime.Now) > 0)
                         {
                             Page mPage = new Page();
@@ -2355,11 +2435,21 @@ namespace SmcEslSystem
                                             if (dr4.Cells[1].Value.ToString() == BeaconProductAll[i])
                                             {
                                                 mPage.BeaconProduct = dr.Cells[5].Value.ToString();
+                                                mPage.ProductName = dr.Cells[6].Value.ToString();
+                                                mPage.SBeaconTime = Convert.ToDateTime(dr.Cells[21].Value.ToString());
+                                                mPage.EBeaconTime = Convert.ToDateTime(dr.Cells[22].Value.ToString());
+                                             /*   TimeSpan ts = mPage.EBeaconTime - mPage.SBeaconTime;
+                                                double days = ts.TotalDays;
+                                                if (days < 10)
+                                                    mPage.salesDay = "0" + Convert.ToInt32(days).ToString();
+                                                else
+                                                    mPage.salesDay = Convert.ToInt32(days).ToString();
+
+                                                mPage.Comment = dr.Cells[23].Value.ToString();*/
                                                 mPage.APID = dr4.Cells[8].Value.ToString();
                                                 Console.WriteLine("----------------OKOK");
                                                 BeaconList.Add(mPage);
-                                                BeaconListUpdate.Add(mPage.BeaconProduct);
-
+                                                BeaconListUpdate.Add(mPage.BeaconProduct+ mPage.ProductName + mPage.SBeaconTime + mPage.EBeaconTime + mPage.Comment);
                                             }
                                         }
                                     }
@@ -2367,9 +2457,20 @@ namespace SmcEslSystem
                                     {
                                         Console.WriteLine("BeaconListnji3.3"+ dr4.Cells[1].Value.ToString());
                                         mPage.BeaconProduct = dr.Cells[5].Value.ToString();
+                                        mPage.ProductName = dr.Cells[6].Value.ToString();
+                                        mPage.SBeaconTime = Convert.ToDateTime(dr.Cells[21].Value.ToString());
+                                        mPage.EBeaconTime = Convert.ToDateTime(dr.Cells[22].Value.ToString());
+                                      /*  mPage.Comment = dr.Cells[23].Value.ToString();
+                                        TimeSpan ts =  mPage.EBeaconTime - mPage.SBeaconTime;
+                                        double days = ts.TotalDays;
+                                        if (days < 10)
+                                            mPage.salesDay = "0" + Convert.ToInt32(days).ToString();
+                                        else
+                                            mPage.salesDay = Convert.ToInt32(days).ToString();
+                                        */
                                         mPage.APID = dr4.Cells[8].Value.ToString();
                                         BeaconList.Add(mPage);
-                                        BeaconListUpdate.Add(mPage.BeaconProduct);
+                                        BeaconListUpdate.Add(mPage.BeaconProduct + mPage.ProductName + mPage.SBeaconTime + mPage.EBeaconTime + mPage.Comment);
                                     }
                                 }
                             }
@@ -2384,18 +2485,23 @@ namespace SmcEslSystem
                             // Do something
                             dr.Cells[21].Value = DBNull.Value;
                             dr.Cells[22].Value = DBNull.Value;
+                            dr.Cells[23].Value = DBNull.Value;
+                            nullbeacon.Add(dr.Cells[5].Value.ToString());
                             mExcelData.dataGridViewRowCellUpdate(dataGridView1, 21, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                             mExcelData.dataGridViewRowCellUpdate(dataGridView1, 22, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 23, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                             productState(dr);
                             //CheckBeaconTimer.Start();
                             //}
 
                         }
-
-
                     }
 
                 }
+
+                if (nullbeacon.Count!=0)
+                    beacon_data_set(nullbeacon, "", "", "");
+
                 if (beaconmsg != "") {
                     CheckBeaconTimer.Stop();
                     DialogResult result = MessageBox.Show(beaconmsg, "Beacon訊息", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -2407,19 +2513,36 @@ namespace SmcEslSystem
                 {
                     Console.WriteLine("Beacon 更新");
 
-                    if (BeaconList.Count > 0) {
+                    if (BeaconList.Count > 0)
+                    {
                         //setLocalTime(BeaconList[beacon_index].APID);
                         testest = true;
                         foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
                         {
                             if (kvp.Key.Contains(BeaconList[beacon_index].APID))
                             {
-                                  setBeaconTime(BeaconList[beacon_index].APID);
-                                System.Threading.Thread.Sleep(100);
-                                kvp.Value.mSmcEsl.WriteBeaconData("ESL143AP01", BeaconList[beacon_index].BeaconProduct, false);
+                                setBeaconTime(BeaconList[beacon_index].APID);
+                              //  System.Threading.Thread.Sleep(100);
+                                Console.WriteLine("ESL143AP01"+ BeaconList[beacon_index].BeaconProduct+BeaconList[beacon_index].Comment+ BeaconList[beacon_index].salesDay);
+                                if(BeaconList.Count==1)
+                                    kvp.Value.mSmcEsl.WriteBeaconData("ESL143AP01", BeaconList[beacon_index].BeaconProduct, true);
+                                else
+                                    kvp.Value.mSmcEsl.WriteBeaconData("ESL143AP01", BeaconList[beacon_index].BeaconProduct, false);
                             }
                         }
-                       
+
+                    }
+                    else
+                    {
+                        Page mPage = new Page();
+                        mPage.BeaconProduct = "0000000000000";
+                        BeaconList.Add(mPage);
+
+                        foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                        {
+                                kvp.Value.mSmcEsl.setBeaconTime(18, 12, 31, 23, 59, 99, 12, 31, 23, 59);
+                                kvp.Value.mSmcEsl.WriteBeaconData("ESL143AP01", BeaconList[beacon_index].BeaconProduct, true);
+                        }
                     }
 
                     BeaconListNow.Clear();
@@ -2572,6 +2695,7 @@ namespace SmcEslSystem
                 if (SalePageListUpdate.Count !=0)
                 {
 
+                    ProgressBarVisible(PageList.Count);
                     List<string> RunAPList = new List<string>();
                     List<Page1> list = SalePageListUpdate.GroupBy(a => a.APLink).Select(g => g.First()).ToList();
                     foreach (Page1 p in list)
@@ -2628,6 +2752,11 @@ namespace SmcEslSystem
                     }
                     if (!assalepage)
                     {
+                        foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                        {
+
+                            kvp.Value.mSmcEsl.stopScanBleDevice();
+                        }
                         testest = true;
                         onlockedbutton(testest);
                         saletime = true;
@@ -2669,6 +2798,7 @@ namespace SmcEslSystem
                         stopwatch.Reset();
                         stopwatch.Start();
                         Console.WriteLine("不依樣近來更新");
+                        ProgressBarVisible(PageList.Count);
                         for (int a = 0; a < RunAPList.Count; a++)
                         {
                             for (int i = 0; i < PageList.Count; i++)
@@ -2718,7 +2848,12 @@ namespace SmcEslSystem
                                             //}
                                         }
 
+                                        foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                                        {
 
+                                                kvp.Value.mSmcEsl.stopScanBleDevice();
+
+                                        }
                                         foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
                                         {
 
@@ -2737,13 +2872,22 @@ namespace SmcEslSystem
                                                 mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, numVal, false, openExcelAddress, excel, excelwb, mySheet);
                                                 pictureBoxPage1.Image = bmp;
 
-                                                Console.WriteLine("ININ");
-                                                kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                                kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
+                                                //Console.WriteLine("ININ");
+                                                // kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                                //  kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);
+                                                deviceIPData = mPage1.APLink;
+                                                //ConnectBleTimeOut.Start();
+                                                kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.usingAddress);
+                                                mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                                                mPage1.TimerConnect.Interval = (20 * 1000);
+                                                mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                                                mPage1.TimerSeconds = new Stopwatch();
+                                                mPage1.TimerSeconds.Start();
+                                                mPage1.TimerConnect.Start();
                                                 //  System.Threading.Thread.Sleep(100);
                                                 //      SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
                                                 //    mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
-                                              //  richTextBox1.Text = mPage1.usingAddress + "  嘗試連線中請稍候... \r\n";
+                                                //  richTextBox1.Text = mPage1.usingAddress + "  嘗試連線中請稍候... \r\n";
                                             }
                                         }
                                     }
@@ -2817,13 +2961,14 @@ namespace SmcEslSystem
             }
         }
 
-        public void ProgressBarVisible(int pagelist)
+        public void ProgressBarVisible(int Size)
         {
             Console.WriteLine("ProgressBarVisible");
+            Size = Size * 10;
             this.progressBar1.Visible = true; //顯示進度條
-            progressBar1.Maximum = pagelist;//設置最大長度值
+            progressBar1.Maximum = Size;//設置最大長度值
             progressBar1.Value = 0;//設置當前值
-            progressBar1.Step = 1;//設置沒次增長多少
+            progressBar1.Step = 10;//設置沒次增長多少
             //progressBar1.Increment(listcount);
         }
         // int j = 0;
@@ -2839,7 +2984,7 @@ namespace SmcEslSystem
             string[] IP = deviceIP.Split(':');
             ESLFromIP = IP[0];
             string str_data = "";
-            Console.WriteLine("UpdateUI");
+            Console.WriteLine("UpdateUI"+ data);
             /*   if (data.Equals("連線成功"))
                {
 
@@ -3296,66 +3441,104 @@ namespace SmcEslSystem
                     //    tbMessageBox.SelectionColor = Color.FromArgb(60, 119, 119);
 
                     countconnect = 0;
-                   this.progressBar1.Visible = true;
                    updateESLper.Text= (Convert.ToUInt32(updateESLper.Text)+1).ToString();
 
                    Console.WriteLine("-----------------------");
-                   if (CheckESLOnly) {
+               /*    if (CheckESLOnly) {
                        //APESLState.Text = "連線成功";
                        CheckESLOnly = false;
                        mSmcEsl.DisConnectBleDevice();
-                   }
+                   }*/
 
                     ConnectTimer.Stop();
-                    ConnectBleTimeOut.Stop();
-               //     richTextBox1.Text = "連線成功"+"\r\n"+ richTextBox1.Text;
-                  //  richTextBox1.ForeColor = Color.Blue;
-                    foreach (DataGridViewRow dr in this.dataGridView4.Rows) {
-                        if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == checkESLV[listcount].ESLID) {
-
-                            dr.Cells[0].Value = false;
+                    //ConnectBleTimeOut.Stop();    
+                  //  System.Threading.Thread.Sleep(1000);
+                    Page1 mPage1 = new Page1();
+                    Console.WriteLine("msg_ConnectEslDevicedeviceIP:" + deviceIP);
+                    for (int i = 0; i < PageList.Count; i++)
+                    {
+                        if ((PageList[i].APLink+":1200") == deviceIP && PageList[i].UpdateState == null)
+                        {
+                            
+                            mPage1 = PageList[i];
+                            PageList[i].TimerSeconds.Stop();
+                            PageList[i].TimerConnect.Stop();
+                            break;
                         }
+                        if (i == PageList.Count - 1)
+                        {
+                            List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).Where(p => p.UpdateState == null).ToList();
+                            foreach (Page1 p in list)
+                            {
+                                OldRunAPList.Add(p.APLink);
+
+                            }
+                        }
+
                     }
+
+
                     foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
                     {
-                        if (kvp.Key.Contains(checkESLV[listcount].APID))
+                        if (kvp.Key.Contains(mPage1.APLink))
                         {
-
-                            kvp.Value.mSmcEsl.ReadEslBattery();
-
-                            System.Threading.Thread.Sleep(100);
-                            kvp.Value.mSmcEsl.DisConnectBleDevice();
+                            Console.WriteLine("ReadType" + mPage1.APLink);
+                            kvp.Value.mSmcEsl.ReadBleDeviceName();
                         }
                     }
-                    listcount++;
-                    
-                   // DisConnectTimer.Stop();
-                }
-                else
-                {
-                    str_data = "連線失敗";
-                 //   richTextBox1.Text = "連線失敗" + "\r\n" + richTextBox1.Text;
-                    countconnect++;
-                    if (countconnect < 2) {
-                        if (isRun)
+
+                    //     richTextBox1.Text = "連線成功"+"\r\n"+ richTextBox1.Text;
+                    //  richTextBox1.ForeColor = Color.Blue;
+                    /*    foreach (DataGridViewRow dr in this.dataGridView4.Rows) {
+                            if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == checkESLV[listcount].ESLID) {
+
+                                dr.Cells[0].Value = false;
+                            }
+                        }
+                        foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
                         {
-                            System.Threading.Thread.Sleep(100);
-                            CheckVTimer.Interval = 3000;
-                            CheckVTimer.Start();
-                            //DisConnectTimer.Start();
-                            // ConnectTimer.Interval = 2000;
-                            // ConnectTimer.Start();
-                        }
-                        else {
-                            countconnect = 0;
-                        }
-                 //   richTextBox1.ForeColor = Color.Red;
-                    DisConnectTimer.Stop();
-                    ConnectBleTimeOut.Stop();
-                   // if (continuewrite)
-                  //  {
-                       // DisConnectTimer.Start();
-                    }
+                            if (kvp.Key.Contains(checkESLV[listcount].APID))
+                            {
+
+                                kvp.Value.mSmcEsl.ReadEslBattery();
+                                kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                checkESLV[listcount].ESLID
+                                System.Threading.Thread.Sleep(100);
+                                kvp.Value.mSmcEsl.DisConnectBleDevice();
+                            }
+                        }*/
+                    /*  Bitmap bmp;
+                      foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                      {
+                          if (kvp.Key.Contains(PageList[listcount].APLink))
+                          {
+
+                              if (PageList[listcount].onsale == "V")
+                              {
+                                  bmp = mElectronicPriceData.setPage1("Calibri", PageList[listcount].product_name, PageList[listcount].Brand,
+                                          PageList[listcount].specification, PageList[listcount].price, PageList[listcount].Special_offer,
+                                             PageList[listcount].barcode, PageList[listcount].Web, PageList[listcount].usingAddress, PageList[listcount].HeadertextALL, ESLSaleFormat);
+                              }
+                              else
+                              {
+                                  bmp = mElectronicPriceData.setPage1("Calibri", PageList[listcount].product_name, PageList[listcount].Brand,
+                                          PageList[listcount].specification, PageList[listcount].price, PageList[listcount].Special_offer,
+                                             PageList[listcount].barcode, PageList[listcount].Web, PageList[listcount].usingAddress, PageList[listcount].HeadertextALL, ESLFormat);
+                              }
+
+                              kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                              //  kvp.Value.mSmcEsl.WriteESLDataWithBle2(PageList[listcount].BleAddress);
+                              //kvp.Value.mSmcEsl.WriteESLDataWithBle2("FFFFFFFF");
+                              kvp.Value.mSmcEsl.WriteESLDataWithBle();
+                              //  System.Threading.Thread.Sleep(100);
+                              //  kvp.Value.mSmcEsl.DisConnectBleDevice();
+                          }
+                      }
+                      */
+                    //listcount++;
+
+                    // DisConnectTimer.Stop();
+
                     // ConnectTimer.Interval = 4000;
                     // ConnectTimer.Start();
                     //  }
@@ -3364,31 +3547,163 @@ namespace SmcEslSystem
             // 藍牙斷線
             else if (msgId == EslUdpTest.SmcEsl.msg_DisconnectEslDevice)
             {
-                ConnectBleTimeOut.Stop();
+                //ConnectBleTimeOut.Stop();
+               
                 if (status)
                 {
                     str_data = "斷線成功";
-                    this.progressBar1.Visible = false; //隱藏進度條
-                    stopwatch.Reset();
-                    stopwatch.Start();
+                //    this.progressBar1.Visible = false; //隱藏進度條
+                   // stopwatch.Reset();
+                  //  stopwatch.Start();
 
                     DisConnectTimer.Stop();
-                    
-                   // richTextBox1.Text = "斷線成功" + "\r\n" + richTextBox1.Text;
-                  //  richTextBox1.ForeColor = Color.Red;
-                        //dataGridView1.Rows[1].Selected = true;
-                   // aaa(1, false, 0);
+                   System.Threading.Thread.Sleep(1000);
+                    // richTextBox1.Text = "斷線成功" + "\r\n" + richTextBox1.Text;
+                    //  richTextBox1.ForeColor = Color.Red;
+                    //dataGridView1.Rows[1].Selected = true;
+                    // aaa(1, false, 0);
                     //  if (continuewrite)
                     //  {
                     data = "斷線失敗";
-                    if (checkV) {
+              /*      if (checkV) {
                         Console.WriteLine("ISRUN");
                         CheckVTimer.Interval = 1000;
                         CheckVTimer.Start();
+                    }*/
+                    if (testest)
+                    {
+ 
+
+
+                        Console.WriteLine("listcount" + listcount + " PageList.Count" + PageList.Count);
+
+                        if (listcount + 1 < PageList.Count)
+                        {
+                            Console.WriteLine("deviceFFFGGGGGGGG" + deviceIP);
+                            listcount++;
+                            bleConnect(deviceIP);
+
+                        }
+                        else
+                        {
+
+                            if (sale)
+                            {
+                                bool TT = false;
+                                foreach (DataGridViewRow dr in dataGridView1.Rows)
+                                {
+                                    if (dr.Cells[5].Style.ForeColor == Color.Red || dr.Cells[6].Style.ForeColor == Color.Red || dr.Cells[7].Style.ForeColor == Color.Red || dr.Cells[8].Style.ForeColor == Color.Red || dr.Cells[9].Style.ForeColor == Color.Red || dr.Cells[10].Style.ForeColor == Color.Red || dr.Cells[11].Style.ForeColor == Color.Red)
+                                    {
+                                        TT = true;
+                                    }
+                                }
+                                if (!TT)
+                                {
+                                    button2.Enabled = false;
+                                    button2.BackColor = Color.Gray;
+
+                                }
+
+
+                            }
+
+                            if (EslStyleChangeUpdate)
+                            {
+                                button19.BackColor = Color.Gray;
+                                button19.Enabled = false;
+                            }
+
+                            /*    if (!down && !sale && !reset && !saletime)
+                                {
+                                    foreach (DataGridViewRow dr in dataGridView1.Rows)
+                                    {
+                                        if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() != "")
+                                        {
+                                            dr.Cells[0].Value = true;
+                                            dr.Cells[0].ReadOnly = false;
+
+                                        }
+                                        else
+                                        {
+                                            dr.Cells[0].Value = false;
+                                            dr.Cells[0].ReadOnly = true;
+                                        }
+                                        dr.Cells[1].Value = dr.Cells[12].Value;
+                                    }
+
+                                }*/
+                            testest = false;
+                            onlockedbutton(testest);
+                            checkClick = false;
+                            down = false;
+                            OldRunAPList.Clear();
+                            backESLList.Clear();
+                            Console.WriteLine("87877878787");
+                            progressBar1.Visible = false;
+                            down = false;
+                            sale = false;
+                            reset = false;
+                            saletime = false;
+                            immediateUpdate = false;
+                            listcount = 0;
+                            EslStyleChangeUpdate = false;
+
+                            pictureBoxPage1.Image = null;
+                            richTextBox1.Text = "";
+                            stopwatch.Stop();//碼錶停止
+                            TimeSpan tsa = stopwatch.Elapsed;
+                            string elapsedTimea = String.Format("{0:00} 分 {1:00} 秒 {2:000} ms",
+                            tsa.Minutes, tsa.Seconds,
+                            tsa.Milliseconds);
+                            dataGridView1.Enabled = true;
+                            removeESLingstate = false;
+                            onsaleESLingstate = false;
+                            updateESLingstate = false;
+                            ESLStyleDataChange = false;
+                            ESLSaleStyleDataChange = false;
+                            PageList.Clear();
+                            testest = false;
+
+                            //pictureBox4.Visible = false;
+                            //   checkClick = false;
+                            //  OldRunAPList.RemoveAll(it => true);
+                            OldRunAPList.Clear();
+                            // mSmcEsl.DisConnectBleDevice();
+                            //ConnectTimer.Stop();
+                            CheckBeaconTimer.Start();
+                            int ESLBindCount = 0;
+                            foreach (DataGridViewRow dr in this.dataGridView4.Rows)
+                            {
+
+                                if (dr.Cells[6].Value != null && dr.Cells[6].Value.ToString() != "未綁定")
+                                {
+                                    ESLBindCount = ESLBindCount + 1;
+                                    BindESL.Text = ESLBindCount.ToString();
+
+                                }
+                            }
+
+
+                            ConnectTimer.Stop();
+                            if (!radioButton1.Checked)
+                            {
+                                MessageBox.Show("全部更新完成  \r\n" + elapsedTimea);
+                            }
+                            //    mExcelData.UpdateDataList(false, "esldemoV2.xlsx", PageList);
+                            //      mExcelData.DataGridview4Update(dataGridView4, false, openExcelAddress);
+                            //     mExcelData.DataGridviewSave(dataGridView1, false, openExcelAddress);
+
+                            datagridview1curr = 2;
+                            aaa(1, false, 0);
+
+                        }
+                        totalwritecount++;
+                        // ConnectTimer.Interval = 2000;
+                        //ConnectTimer.Start();
+                        //  }
                     }
-                    // ConnectTimer.Interval = 2000;
-                    //ConnectTimer.Start();
-                    //  }
+
+
                 }
                 else
                 {
@@ -3397,10 +3712,85 @@ namespace SmcEslSystem
                   
                 }
             }
+
+            else if (msgId == EslUdpTest.SmcEsl.msg_ReadEslType)
+            {
+                Console.WriteLine(" SmcEsl.msg_ReadEslType" + data);
+
+                
+                string EslSize =  data.Substring(6, 2);
+                if (status)
+                {
+                
+                    if (data.Substring(6, 2).Equals("00"))
+                    {
+                        str_data = "2.13吋";
+                    }
+                    else if (data.Substring(6, 2).Equals("01"))
+                    {
+                        str_data = "2.9吋";
+                    }
+                    else if (data.Substring(6, 2).Equals("02"))
+                    {
+                        str_data = "4.2吋";
+                    }
+
+                    writeESLdataBySzie(deviceIP,EslSize,true);
+               
+
+                }
+                else
+                {
+                    str_data = "讀取尺寸失敗";
+                }
+
+            }
+
             // 取得藍牙名稱
             else if (msgId == EslUdpTest.SmcEsl.msg_ReadEslName)
             {
-                str_data = "Device Name : " + data;
+                str_data = "Device Name :" + data;
+                Console.WriteLine("msg_ReadEslName:" + data);
+                if (!data.Contains("ESL-0003"))
+                {
+                    Console.WriteLine("NOC---"+ data);
+                    writeESLdataBySzie(deviceIP, "00", false);
+                }
+                else
+                {
+                    Console.WriteLine("C---" + data);
+                    Page1 mPage1 = new Page1();
+                    for (int i = 0; i < PageList.Count; i++)
+                    {
+                        if ((PageList[i].APLink + ":1200") == deviceIP && PageList[i].UpdateState == null)
+                        {
+
+                            mPage1 = PageList[i];
+                            break;
+                        }
+                        if (i == PageList.Count - 1)
+                        {
+                            List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).Where(p => p.UpdateState == null).ToList();
+                            foreach (Page1 p in list)
+                            {
+                                OldRunAPList.Add(p.APLink);
+
+                            }
+                        }
+
+                    }
+
+                    foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                    {
+                        if (kvp.Key.Contains(mPage1.APLink))
+                        {
+                            Console.WriteLine("ReadType" + mPage1.APLink);
+                            kvp.Value.mSmcEsl.ReadEslType();
+                        }
+                    }
+                }
+
+
             }
             // 寫入設備名稱
             else if (msgId == EslUdpTest.SmcEsl.msg_WriteEslName)
@@ -3421,7 +3811,22 @@ namespace SmcEslSystem
                 {
                     Console.WriteLine("資料寫入成功");
                     //progressBar1.Value += progressBar1.Step;
-                    str_data = "資料寫入成功";
+                   // str_data = "資料寫入成功";
+                }
+                else
+                {
+                    str_data = "資料寫入失敗";
+                }
+            }
+
+            // 寫入ESL資料
+            else if (msgId == EslUdpTest.SmcEsl.msg_WriteEslData2)
+            {
+                if (status)
+                {
+                    Console.WriteLine("資料寫入成功");
+                    //progressBar1.Value += progressBar1.Step;
+                  //  str_data = "資料寫入成功";
                 }
                 else
                 {
@@ -3431,36 +3836,39 @@ namespace SmcEslSystem
             // 寫入ESL資料，全部寫完
             else if (msgId == EslUdpTest.SmcEsl.msg_WriteEslDataFinish)
             {
+                Console.WriteLine("---------msg_WriteEslDataFinish---------");
 
+             //   this.progressBar1.Visible = false;
+                str_data = "全部資料寫入完成";
+
+                str_data = writeESLsuccess(deviceIP, str_data);
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+                    if (kvp.Key.Contains(deviceIP.Split(':')[0]))
+                    {
+                        kvp.Value.mSmcEsl.DisConnectBleDevice();
+                    }
+                }
+            }
+
+
+            // 寫入ESL資料，全部寫完
+            else if (msgId == EslUdpTest.SmcEsl.msg_WriteEslDataFinish2)
+            {
+                Console.WriteLine("---------msg_WriteEslDataFinish2---------");
                 BleWriteTimer.Stop();
                 str_data = "全部資料寫入完成";
-                //this.progressBar1.Visible = false; //顯示進度條
-
-                stopwatch.Stop();//碼錶停止
-                TimeSpan ts = stopwatch.Elapsed;
-
-                // Format and display the TimeSpan value.
-                string elapsedTime = String.Format("{0:00} 分 {1:00} 秒 {2:000} 毫秒", ts.Minutes, ts.Seconds, ts.Milliseconds);
-
-            //    totleTimeSpan = totleTimeSpan + ts;
-               // double totletime = totleTimeSpan.TotalMilliseconds;
-             //   totletime = totletime / totalwritecount / 1000;
-              //  totletime = Math.Round(totletime, 3);
-               // string average = totletime.ToString();
-                //Console.WriteLine("msg_WriteEslDataFinish");
-               // if (continuewrite)
-               // {
-                    foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                //  this.progressBar1.Visible = false;
+                str_data = writeESLsuccess(deviceIP, str_data);
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+                    if (kvp.Key.Contains(deviceIP.Split(':')[0]))
                     {
-                        if (kvp.Key.Contains(PageList[listcount].APLink))
-                        {
-                            kvp.Value.mSmcEsl.DisConnectBleDevice();
-                        }
+                        kvp.Value.mSmcEsl.DisConnectBleDevice();
                     }
-                   totalwritecount++;
-               // }
-             //   str_data = "  -> MAC:" + leBleMac.Text + "  成功" + ", 執行時間 = " + elapsedTime + ", 總時間 = " + totleTimeSpan + ", 平均 = " + average + ", 總次數 = " + totalwritecount;
+                }
 
+  
             }
             // 寫入AP Beacon Data
             else if (msgId == EslUdpTest.SmcEsl.msg_WriteBeacon)
@@ -3658,7 +4066,7 @@ namespace SmcEslSystem
                                 {
 
                                     EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                                    mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
+                                    mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3,0);
                                     //Console.WriteLine("WWWWWWWWWWWWWWWWWWWWWWWTTTTTTTTT");
                                 }
                             }
@@ -3679,15 +4087,14 @@ namespace SmcEslSystem
             {
                 if (status)
                 {
-                    ConnectBleTimeOut.Stop();
+                    //ConnectBleTimeOut.Stop();
                     //str_data = "AP 更新 ESL 完成";
                     updateESLper.Text = (Convert.ToUInt32(updateESLper.Text) + 1).ToString();
                     //  richTextBox1.Text = "斷線成功" + macaddress + "\r\n" + richTextBox1.Text;
 
 
                     Console.WriteLine("AP 更新 PageList.Count" + PageList.Count);
-                    Console.WriteLine("分子" + (listcount + 1)+"分母"+ progressBar1.Maximum);
-                    progressBar1.Increment(1);
+
                     for (int i = 0; i < PageList.Count; i++)
                     {
                       //  Console.WriteLine(i+"AP 更新 ESL" + PageList[i].usingAddress + deviceIP);
@@ -3774,6 +4181,7 @@ namespace SmcEslSystem
 
                                 PageList[i].UpdateState = "更新成功";
                                 PageList[i].UpdateTime = DateTime.Now.ToString();
+                                List<string> nullbeacon = new List<string>();
                                 foreach (DataGridViewRow dr in dataGridView1.Rows)
                                 {
 
@@ -3806,10 +4214,10 @@ namespace SmcEslSystem
 
                                                     foreach (DataGridViewRow dr4 in dataGridView4.Rows)
                                                     {
-                                                         Console.WriteLine(dr4.Cells[1].Value.ToString()+"jjjjjjj" + PageList[i].usingAddress);
+                                                       //  Console.WriteLine(dr4.Cells[1].Value.ToString()+"jjjjjjj" + PageList[i].usingAddress);
                                                         if (dr4.Cells[1].Value!=null&&dr4.Cells[1].Value.ToString()==PageList[i].usingAddress)
                                                         {
-                                                            Console.WriteLine("ININJ");
+//Console.WriteLine("ININJ");
                                                             dr4.Cells[2].Value = DateTime.Now.ToString();
                                                             mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                             dr4.Cells[2].Style.BackColor = Color.Green;
@@ -3870,12 +4278,16 @@ namespace SmcEslSystem
                                                                     dr.Cells[20].Value = DBNull.Value;
                                                                     dr.Cells[21].Value = DBNull.Value;
                                                                     dr.Cells[22].Value = DBNull.Value;
-                                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                                dr.Cells[23].Value = DBNull.Value;
+
+                                                                nullbeacon.Add(dr.Cells[5].Value.ToString());
+                                                                mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                                     mExcelData.dataGridViewRowCellUpdate(dataGridView1, 19, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                                     mExcelData.dataGridViewRowCellUpdate(dataGridView1, 20, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                                     mExcelData.dataGridViewRowCellUpdate(dataGridView1, 21, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                                     mExcelData.dataGridViewRowCellUpdate(dataGridView1, 22, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
-                                                                    dr.DefaultCellStyle.ForeColor = Color.Gray;
+                                                                mExcelData.dataGridViewRowCellUpdate(dataGridView1, 23, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                                dr.DefaultCellStyle.ForeColor = Color.Gray;
                                                                 }
 
                                                             }
@@ -3955,7 +4367,7 @@ namespace SmcEslSystem
                                                     dr.DefaultCellStyle.ForeColor = Color.Black;
                                                     foreach (DataGridViewRow dr4 in dataGridView4.Rows)
                                                     {
-                                                        Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
+                                                       // Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
                                                         if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
                                                         {
                                                             Console.WriteLine("ININJ");
@@ -3980,16 +4392,16 @@ namespace SmcEslSystem
                                                     productState(dr);
                                                     dr.Cells[18].Value = DateTime.Now.ToString();
                                                     mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
-                                                    dr.Cells[3].Value = DBNull.Value;
+                                                    dr.Cells[3].Value = false;
 
 
 
                                                     foreach (DataGridViewRow dr4 in dataGridView4.Rows)
                                                     {
-                                                        Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
+                                                    //    Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
                                                         if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
                                                         {
-                                                            Console.WriteLine("ININJ");
+                                                         //   Console.WriteLine("ININJ");
                                                             dr4.Cells[2].Value = DateTime.Now.ToString();
                                                             mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                             dr4.Cells[2].Style.BackColor = Color.Green;
@@ -4011,10 +4423,10 @@ namespace SmcEslSystem
                                                     mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                     foreach (DataGridViewRow dr4 in dataGridView4.Rows)
                                                     {
-                                                        Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
+                                                     //   Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
                                                         if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
                                                         {
-                                                            Console.WriteLine("ININJ");
+                                                        //    Console.WriteLine("ININJ");
                                                             dr4.Cells[2].Value = DateTime.Now.ToString();
                                                             mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                             dr4.Cells[2].Style.BackColor = Color.Green;
@@ -4209,10 +4621,10 @@ namespace SmcEslSystem
 
                                                 foreach (DataGridViewRow dr4 in dataGridView4.Rows)
                                                 {
-                                                    Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].BleAddress);
+                                                   // Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].BleAddress);
                                                     if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString().Contains(PageList[i].BleAddress))
                                                     {
-                                                        Console.WriteLine("AA" + dr4.Cells[1].Value.ToString());
+                                                       // Console.WriteLine("AA" + dr4.Cells[1].Value.ToString());
                                                         dr4.Cells[2].Value = DateTime.Now.ToString();
                                                         mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
                                                         dr4.Cells[2].Style.BackColor = Color.Green;
@@ -4233,6 +4645,10 @@ namespace SmcEslSystem
 
 
                                 }
+
+                                if (nullbeacon.Count != 0)
+                                    beacon_data_set(nullbeacon, "", "", "");
+
                             }
                             deviceIPData = PageList[i].APLink;
                            // PageList.RemoveAt(i);
@@ -4396,7 +4812,6 @@ namespace SmcEslSystem
 
                         countconnect = 0;
                         button4.Visible = true;
-                    progressBar1.Increment(1);
                     for (int i = 0; i < PageList.Count; i++)
                     {
                         Console.WriteLine("aaaaaaa" + PageList[i].APLink + deviceIP);
@@ -4429,9 +4844,11 @@ namespace SmcEslSystem
                                     Console.WriteLine("saletime macaddress"+ macaddress);
                                     if(down)
                                     {
+                                        Console.WriteLine("down FAIL");
                                         foreach (DataGridViewRow dr in dataGridView1.Rows)
                                         {
                                             if (dr.Cells[1].Value!=null&&PageList[i].usingAddress== dr.Cells[1].Value.ToString()) {
+
                                                 dr.Cells[0].Value = true;
                                                 dr.Cells[0].ReadOnly = false;
                                             }
@@ -4731,37 +5148,24 @@ namespace SmcEslSystem
                 }
             }
 
-            if (data.Equals("斷線成功") || data.Equals("斷線失敗") || data.Equals("連線失敗"))
-            {
-               
-
-            }
-            else if (data.Equals("連線成功"))
-            {
-                
-            }
-            else
-            {
-                
-            }
 
 
-            if (totalwritecount == 100)
-            {
-                
-            }
+            /* if (str_data.Equals("資料寫入成功") || msgId == EslUdpTest.SmcEsl.msg_ScanDevice)
+             {
 
-
-            if (str_data.Equals("資料寫入成功") || msgId == EslUdpTest.SmcEsl.msg_ScanDevice)
-            {
-
-            }
-            else
-            {
-                richTextBox1.Text= richTextBox1.Text+ "\r\n" + (Environment.NewLine + deviceIP + "  Time = " + DateTime.Now.ToString("HH:mm:ss") + " =>" + str_data); 
+             }
+             else
+             {
+                 richTextBox1.Text= richTextBox1.Text+ "\r\n" + (Environment.NewLine + deviceIP + "  Time = " + DateTime.Now.ToString("HH:mm:ss") + " =>" + str_data); 
+                 richTextBox1.SelectionStart = richTextBox1.Text.Length;
+                 richTextBox1.ScrollToCaret();
+             }*/
+            if (str_data != "") {
+                richTextBox1.Text = richTextBox1.Text + "\r\n" + (Environment.NewLine + deviceIP + "  Time = " + DateTime.Now.ToString("HH:mm:ss") + " =>" + str_data);
                 richTextBox1.SelectionStart = richTextBox1.Text.Length;
                 richTextBox1.ScrollToCaret();
             }
+
 
 
         }
@@ -4910,7 +5314,7 @@ namespace SmcEslSystem
 
                             if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.usingAddress)
                             {
-                                Console.WriteLine("AAAAAAAAAFFFFFFFFFFFFSSSSSSSSSSSSSS");
+                             //   Console.WriteLine("AAAAAAAAAFFFFFFFFFFFFSSSSSSSSSSSSSS");
                                 dataGridView4.Rows[dr.Index].Cells[0].Selected = true;
                             }
                         }
@@ -4954,10 +5358,10 @@ namespace SmcEslSystem
                         }
 
                         //kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
+                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);
                             //.Threading.Thread.Sleep(1000);
                             EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
+                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3,0);
                     }
                 }
                 //  mSmcEsl.ConnectBleDevice(mPage1.usingAddress);
@@ -5008,9 +5412,9 @@ namespace SmcEslSystem
                                         mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
                         }
                         kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress);
+                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);
                             EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 8);
+                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 8,0);
                     }
                 }
 
@@ -5037,9 +5441,9 @@ namespace SmcEslSystem
                                      mPage1.specification, mPage1.price, mPage1.Special_offer,
                                         mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
                         kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress);
+                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);
                             EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 8);
+                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 8,0);
                     }
                 }
                 //mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
@@ -5052,8 +5456,121 @@ namespace SmcEslSystem
 
         }
 
+
+        private void bleConnect(string deviceIP)
+        {
+            Console.WriteLine("bleConnect");
+
+            //mSmcEsl.DisConnectBleDevice();
+            /* if(Runtime == false)
+             {
+                 stopwatch.Reset();
+                 stopwatch.Start();
+             }*/
+
+
+            ConnectTimer.Stop();
+            //ConnectBleTimeOut.Start();
+            Page1 mPage1 = new Page1();
+            for (int i = 0; i < PageList.Count; i++)
+            {
+                Console.WriteLine("bleConnect" + PageList[i].BleAddress);
+                Console.WriteLine("bleConnect:" + PageList[i].APLink+" "+deviceIP+" "+ PageList[i].UpdateState);
+                if ((PageList[i].APLink+":1200") == deviceIP && PageList[i].UpdateState == null)
+                {
+                    
+                    mPage1 = PageList[i];
+                    break;
+                }
+                if (i == PageList.Count - 1)
+                {
+                    List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).Where(p => p.UpdateState == null).ToList();
+                    foreach (Page1 p in list)
+                    {
+                        OldRunAPList.Add(p.APLink);
+
+                    }
+                }
+
+            }
+
+            Bitmap bmp;
+            if (mPage1.APLink != null)
+            {
+                foreach (DataGridViewRow dr in this.dataGridView5.Rows)
+                {
+                   
+                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == PageList[listcount].APLink)
+                    {
+                        if (dr.Cells[4].Value.ToString() == "")                                                                                                                                                                                                                                                                                 
+                        {
+                            //  listcount++;
+                            if (listcount + 1 > PageList.Count)
+                            {
+                                down = false;
+                                sale = false;
+                                reset = false;
+                                saletime = false;
+                                stopwatch.Stop();//碼錶停止
+                                TimeSpan ts = stopwatch.Elapsed;
+                                string elapsedTime = String.Format("{0:00} 分 {1:00} 秒 {2:000} ms",
+                               ts.Minutes, ts.Seconds,
+                               ts.Milliseconds);
+                                dataGridView1.Enabled = true;
+                                removeESLingstate = false;
+                                onsaleESLingstate = false;
+                                updateESLingstate = false;
+                                datagridview1curr = 1;
+                                //mSmcEsl.DisConnectBleDevice();
+                                ConnectTimer.Stop();
+                                int ESLBindCount = 0;
+                                foreach (DataGridViewRow dr4 in this.dataGridView4.Rows)
+                                {
+
+                                    if (dr4.Cells[6].Value != null && dr4.Cells[6].Value.ToString() != "未綁定")
+                                    {
+                                        ESLBindCount = ESLBindCount + 1;
+                                        BindESL.Text = ESLBindCount.ToString();
+
+                                    }
+
+                                }
+                                mExcelData.UpdateDataList(false, "esldemoV2.xlsx", PageList);
+                                testest = false;
+                                mExcelData.DataGridview4Update(dataGridView4, false, openExcelAddress);
+                                // mExcelData.DataGridviewSave(dataGridView1, false, openExcelAddress);
+                                MessageBox.Show("全部更新完成  \r\n" + elapsedTime);
+                                datagridview1curr = 2;
+                                aaa(1, false, 0);
+                                return;
+                            }
+                        }
+                    }
+
+                }
+                    foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                    {
+
+                        if (kvp.Key.Contains(mPage1.APLink))
+                        {
+                        //  ConnectBleTimeOut.Start();
+                        Console.WriteLine("BleConnectTimer" + mPage1.BleAddress);
+                        kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+                        mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                        mPage1.TimerConnect.Interval = (20 * 1000);
+                        mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                        mPage1.TimerSeconds = new Stopwatch();
+                        mPage1.TimerSeconds.Start();
+                        mPage1.TimerConnect.Start();
+                        richTextBox1.Text = mPage1.BleAddress + "  嘗試連線中請稍候... \r\n";
+                        }
+                    }
+            }
+        }
+
+
         private void bufferConnect(string deviceIP) {
-            Console.WriteLine("ConnectBle");
+            Console.WriteLine("bufferConnect");
 
             //mSmcEsl.DisConnectBleDevice();
             /* if(Runtime == false)
@@ -5090,7 +5607,7 @@ namespace SmcEslSystem
             {
                 foreach (DataGridViewRow dr in this.dataGridView5.Rows)
                 {
-                    Console.WriteLine(" PageList[listcount]" + PageList[listcount].product_name);
+                    Console.WriteLine("mPage1" + mPage1.BleAddress);
                     if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == PageList[listcount].APLink)
                     {
                         if (dr.Cells[4].Value.ToString() == "")
@@ -5258,7 +5775,7 @@ namespace SmcEslSystem
                             dataGridView1.Rows[Convert.ToInt32(mPage1.no)-1].Cells[17].Value = DateTime.Now.ToString();
                             mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
                             //kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
+                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);
 
                             //.Threading.Thread.Sleep(1000);
                             EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
@@ -5345,7 +5862,7 @@ namespace SmcEslSystem
                             dataGridView1.Rows[Convert.ToInt32(mPage1.no)-1].Cells[17].Value = DateTime.Now.ToString();
                             mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
                             kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
+                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);
                             EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
                           //  mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
                           //  Console.WriteLine("WWWWWWWWWWWWWWWWWWWWWWWTTTTTTTTT2");
@@ -5372,26 +5889,28 @@ namespace SmcEslSystem
 
                         if (kvp.Key.Contains(mPage1.APLink))
                         {
-                            if (mPage1.onsale == "V")
-                            {
-                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
-                                        mPage1.specification, mPage1.price, mPage1.Special_offer,
-                                           mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
-                            }
-                            else
-                            {
-                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
-                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
-                                            mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
-                            }
-                            
-                            dataGridView1.Rows[Convert.ToInt32(mPage1.no)-1].Cells[17].Value = DateTime.Now.ToString();
-                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
-                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress);
-                         //   SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                           // mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3);
-                          //  System.Threading.Thread.Sleep(200);
+                            /*     if (mPage1.onsale == "V")
+                                 {
+                                     bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                             mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                                mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
+                                 }
+                                 else
+                                 {
+                                     bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                              mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                                 mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
+                                 }
+
+                                 dataGridView1.Rows[Convert.ToInt32(mPage1.no)-1].Cells[17].Value = DateTime.Now.ToString();
+                                 mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
+                                 kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                 kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);*/
+                          //  ConnectBleTimeOut.Start();
+                            kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+                            //   SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                            // mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3);
+                            //  System.Threading.Thread.Sleep(200);
                         }
                     }
                     //mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
@@ -5755,6 +6274,7 @@ namespace SmcEslSystem
             CheckConnectTimer.Stop();
 
             Console.WriteLine("checkaddress.Count" + checkaddress.Count + "ssssss:" + checkconnectcount);
+         //   ConnectBleTimeOut.Start();
             mSmcEsl.ConnectBleDevice(checkaddress[checkconnectcount]);
             richTextBox1.Text = "正連接:" + checkaddress[checkconnectcount] + "\r\n" + richTextBox1.Text;
 
@@ -5771,6 +6291,7 @@ namespace SmcEslSystem
                 {
                     if (kvp.Key.Contains(checkESLV[listcount].APID))
                     {
+                      //  ConnectBleTimeOut.Start();
                         kvp.Value.mSmcEsl.ConnectBleDevice(checkESLV[listcount].ESLID);
                         dataGridView4.Rows[Convert.ToInt32(checkESLV[listcount].No)].Cells[0].Selected = true;
                         richTextBox1.Text = richTextBox1.Text + "\r\n" + "正連接:" + checkESLV[listcount].ESLID;
@@ -5822,12 +6343,367 @@ namespace SmcEslSystem
 
         }
 
-        //資料傳輸超時，斷線
-        private void WriteESL_TimeOut(object sender, EventArgs e)
+
+
+        //尺寸確認計時
+        private void ReadTypeTimer_TimeOut(object sender, EventArgs e)
+        {
+            Console.WriteLine("ReadTypeTimer_TimeOut");
+            //ReadTypeTimer.Stop();
+            Page1 mPage1 = new Page1();
+           
+            for (int i = 0; i < PageList.Count; i++)
+            {
+                if (PageList[i].APLink == deviceIPData && PageList[i].UpdateState == null)
+                {
+                    Console.WriteLine("aadddss" + PageList[i].APLink);
+                    mPage1 = PageList[i];
+                    break;
+                }
+                if (i == PageList.Count - 1)
+                {
+                    List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).Where(p => p.UpdateState == null).ToList();
+                    foreach (Page1 p in list)
+                    {
+                        OldRunAPList.Add(p.APLink);
+
+                    }
+                }
+
+            }
+            Bitmap bmp;
+            if (mPage1.actionName == "down" || mPage1.actionName == "sale" || mPage1.actionName == "reset" || mPage1.actionName == "EslStyleChangeUpdate")
+            {
+
+                //dr.Cells[17].Value = DateTime.Now.ToString();
+                macaddress = mPage1.usingAddress;
+                Console.WriteLine("WWWWWWTTTFFFFFFFFFBBBCCC");
+                if (mPage1.actionName == "reset")
+                {
+                    foreach (DataGridViewRow dr in this.dataGridView4.Rows)
+                    {
+                        if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.usingAddress)
+                        {
+                            dataGridView4.Rows[dr.Index].Cells[0].Selected = true;
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                    {
+                        if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.usingAddress)
+                        {
+                            dataGridView1.Rows[dr.Index].Cells[0].Selected = true;
+                        }
+                    }
+                }
+
+
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+                    Console.WriteLine("mPage1.APLink" + mPage1.APLink);
+                    if (kvp.Key.Contains(mPage1.APLink))
+                    {
+                        Console.WriteLine("ININ");
+                        if (mPage1.actionName == "down")
+                        {
+                            Console.WriteLine("d");
+
+                            bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            pictureBoxPage1.Image = bmp;
+                        }
+                        /*     if (immediateUpdate)
+                             {
+                                 Console.WriteLine("d");
+                                 if (mPage1.onsale == "V")
+                                 {
+                                     bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                              mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                                 mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
+                                 }
+                                 else
+                                 {
+                                     bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                              mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                                 mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
+                                 }
+
+                                 kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                 pictureBoxPage1.Image = bmp;
+                             }*/
+
+                        if (mPage1.actionName == "reset")
+                        {
+                            Console.WriteLine("r");
+                            bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            pictureBoxPage1.Image = bmp;
+                        }
+
+                        if (mPage1.actionName == "sale")
+                        {
+
+                            Console.WriteLine("s");
+                            if (mPage1.onsale == "V")
+                            {
+                                foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                                {
+                                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString()== "0")
+                                    {
+                                        PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                    }
+                                }
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                            mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
+                            }
+                            else
+                            {
+                                foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                                {
+                                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString() == "0")
+                                    {
+                                        PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                    }
+                                }
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                            mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
+                            }
+
+                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            pictureBoxPage1.Image = bmp;
+                            //    bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                        }
+                        if (mPage1.actionName == "EslStyleChangeUpdate")
+                        {
+                            Console.WriteLine("s");
+                            if (mPage1.onsale == "V")
+                            {
+
+                                foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                                {
+                                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString() == "0")
+                                    {
+                                        PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                    }
+                                }
+
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                        mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                           mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
+                                kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            }
+                            else
+                            {
+                                foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                                {
+                                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString() == "0")
+                                    {
+                                        PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                    }
+                                }
+
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                       mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                          mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
+                                kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            }
+
+                            pictureBoxPage1.Image = bmp;
+                            //    bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                        }
+
+
+                        dataGridView1.Rows[Convert.ToInt32(mPage1.no) - 1].Cells[17].Value = DateTime.Now.ToString();
+                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
+                        ProgressBarVisible(PageList.Count);
+                        //kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                        //  kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress, 0);
+                        kvp.Value.mSmcEsl.WriteESLDataWithBle();
+
+                        //.Threading.Thread.Sleep(1000);
+                        EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                        //  mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
+                        //   System.Threading.Thread.Sleep(200);
+                        //   Console.WriteLine("WWWWWWWWWWWWWWWWWWWWWWWTTTTTTTTT1");
+                    }
+                }
+                //  mSmcEsl.ConnectBleDevice(mPage1.usingAddress);
+                foreach (DataGridViewRow dr in this.dataGridView3.Rows)
+                {
+                    if (macaddress == dr.Cells[0].Value.ToString())
+                    {
+                        dr.Cells[4].Value = "連線中";
+                    }
+                }
+
+                // int CurrentRow = dataGridView1.CurrentRow.Index;
+                // dataGridView1.Rows[CurrentRow].Cells[17].Value = DateTime.Now.ToString();
+                //       richTextBox1.Text = "正連接:" + mPage1.usingAddress + "\r\n" + richTextBox1.Text;
+                // mSmcEsl.WriteESLData(PageList[listcount].usingAddress);
+            }
+            else if (mPage1.actionName == "saletime")
+            {
+                macaddress = mPage1.usingAddress;
+                foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                {
+                    if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.usingAddress)
+                    {
+                        Console.WriteLine("乾 最好進不來");
+                        dataGridView1.Rows[dr.Index].Cells[0].Selected = true;
+
+                    }
+                }
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+
+                    if (kvp.Key.Contains(mPage1.APLink))
+                    {
+
+                        string format = "yyyy/MM/dd HH:mm:ss";
+                        string start = Convert.ToDateTime(mPage1.onSaleTimeS).ToString("yyyy/MM/dd HH:mm:ss");
+                        string end = Convert.ToDateTime(mPage1.onSaleTimeE).ToString("yyyy/MM/dd HH:mm:ss");
+                        DateTime strDate = DateTime.ParseExact(start, format, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
+                        DateTime endDate = DateTime.ParseExact(end, format, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
+                        if (DateTime.Compare(strDate, DateTime.Now) < 0 && DateTime.Compare(endDate, DateTime.Now) > 0)
+                        {
+                            foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString() == "0")
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                     mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                        mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
+                            pictureBoxPage1.Image = bmp;
+
+                            foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                            {
+                                if (dr.Cells[6].Value != null && dr.Cells[6].Value.ToString() == mPage1.product_name)
+                                {
+                                    dr.Cells[15].Value = "V";
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 15, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 19, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 20, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                }
+                            }
+                        }
+                        else
+                        {
+
+                            foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString() == "0")
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+                        
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                     mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                        mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
+                            pictureBoxPage1.Image = bmp;
+                            foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                            {
+                                if (dr.Cells[6].Value != null && dr.Cells[6].Value.ToString() == mPage1.product_name)
+                                {
+                                    dr.Cells[15].Value = "X";
+                                    dr.Cells[19].Value = DBNull.Value;
+                                    dr.Cells[20].Value = DBNull.Value;
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 15, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 19, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 20, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                }
+                            }
+
+                        }
+                        dataGridView1.Rows[Convert.ToInt32(mPage1.no) - 1].Cells[17].Value = DateTime.Now.ToString();
+                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
+                        ProgressBarVisible(PageList.Count);
+                        kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                        // kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress, 0);
+                        kvp.Value.mSmcEsl.WriteESLDataWithBle();
+                        EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                        //  mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
+                        //  Console.WriteLine("WWWWWWWWWWWWWWWWWWWWWWWTTTTTTTTT2");
+                        // System.Threading.Thread.Sleep(200);
+
+                    }
+                }
+
+            }
+
+            else
+            {
+
+                macaddress = mPage1.BleAddress;
+                foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                {
+                    if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.BleAddress)
+                    {
+                        dataGridView1.Rows[dr.Index].Cells[0].Selected = true;
+                    }
+                }
+
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+
+                    if (kvp.Key.Contains(mPage1.APLink))
+                    {
+                        if (mPage1.onsale == "V")
+                        {
+                            foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString() == "0")
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                    mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                       mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
+                        }
+                        else
+                        {
+                            foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && dr.Cells[4].Value.ToString() == "0")
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                     mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                        mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
+                        }
+
+                        dataGridView1.Rows[Convert.ToInt32(mPage1.no) - 1].Cells[17].Value = DateTime.Now.ToString();
+                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
+                        ProgressBarVisible(PageList.Count);
+                        kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                        kvp.Value.mSmcEsl.WriteESLDataWithBle();
+                        // kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);
+                        //  kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+
+                    }
+                }
+            }  
+}
+
+//資料傳輸超時，斷線
+private void WriteESL_TimeOut(object sender, EventArgs e)
         {
 
             BleWriteTimer.Stop();
-          //  this.progressBar1.Visible = false;
+          // this.progressBar1.Visible = false;
             foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
             {
                 if (kvp.Key.Contains(PageList[listcount].APLink))
@@ -5840,17 +6716,274 @@ namespace SmcEslSystem
         //藍牙連線超過時間
         private void ConnectBle_TimeOut(object sender, EventArgs e)
         {
-            ConnectBleTimeOut.Stop();
-          //  this.progressBar1.Visible = false; //隱藏進度條
+            
+//ConnectBleTimeOut.Stop();
+         //   this.progressBar1.Visible = false; //隱藏進度條
             richTextBox1.Text = "連線逾時...";
             richTextBox1.ForeColor = Color.Red;
+            Console.WriteLine("~~~~~~~~~~");
+            Runtime = true;
+            /*          if (countconnect < 2)
+                      {
+                          if (CheckESLOnly)
+                          {
+                              Console.WriteLine("CheckESLOnly");
+                              APESLState.Text = "重新嘗試" + countconnect + "次";
+                              //1/2新年第一天上工摟~~~
+                              ConnectTimer.Interval = 1000;
+                              ConnectTimer.Start();
+                              countconnect++;
+
+                          }
+                          else
+                          {
+                              Console.WriteLine("ERROR" + countconnect);
+                              ConnectTimer.Interval = 1000;
+                              ConnectTimer.Start();
+                              countconnect++;
+                          }
+
+                      }
+                      else
+                      {*/
+
+            countconnect = 0;
+            button4.Visible = true;
+            string str_data = "";
+            Page1 mPage1 = new Page1();
+            Console.WriteLine("PageList[i] ConnectTimerOut"+ PageList.Count);
+            for (int i = 0; i < PageList.Count; i++)
+            {
+                Console.WriteLine("PageList[i].TimerSeconds.Elapsed.Seconds"+ PageList[i].TimerSeconds.Elapsed.Seconds);
+                Console.WriteLine("PageList[i].CounnectTimerOut" + PageList[i].usingAddress+" " + PageList[i].UpdateState+" " + PageList[i].APLink);
+                if (PageList[i].TimerSeconds.Elapsed.Seconds >=19  && PageList[i].UpdateState == null)
+                {
+                    str_data = "AP 更新 " + PageList[i].usingAddress + " 失敗";
+                    PageList[i].TimerSeconds.Stop();
+                    PageList[i].TimerConnect.Stop();
+                    mPage1 = PageList[i];
+                    if (reset)
+                    {
+
+                        PageList[i].UpdateState = "更新失敗";
+
+                        PageList[i].UpdateTime = DateTime.Now.ToString();
+
+                        foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                        {
+                            Console.WriteLine("22222222222" + dr4.Cells[1].Value.ToString());
+                            if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                            {
+                                dataGridView4.Rows[dr4.Index].Cells[0].Selected = false;
+                                dr4.Cells[2].Style.BackColor = Color.Red;
+                                dr4.Cells[2].Value = DateTime.Now.ToString();
+                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (PageList[i].actionName == "down" || PageList[i].actionName == "sale" || PageList[i].actionName == "saletime")
+                        {
+                            macaddress = PageList[i].usingAddress;
+                            Console.WriteLine("saletime macaddress" + macaddress);
+                            if (down)
+                            {
+                                Console.WriteLine("down FAIL"+ PageList[i].usingAddress);
+                                foreach (DataGridViewRow dr in dataGridView1.Rows)
+                                {
+                                    if (dr.Cells[1].Value != null && PageList[i].usingAddress == dr.Cells[1].Value.ToString())
+                                    {
+
+                                        dr.Cells[0].Value = true;
+                                        dr.Cells[0].ReadOnly = false;
+                                    }
+
+                                }
+                            }
+                            foreach (DataGridViewRow dr in dataGridView1.Rows)
+                            {
+
+                                if (dr.Cells[1].Value != null)
+                                {
+                                    Console.WriteLine("ConnectBleTimeOu=====PageList[i].usingAddress" + PageList[i].usingAddress);
+                                    Console.WriteLine("ConnectBleTimeOu=====PageList[i].usingAddress" + dr.Cells[1].Value.ToString());
+                                    Console.WriteLine("ConnectBleTimeOu=====PageList[i].usingAddress" + dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress));
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                    {
+                                        ESLFailData.Clear();
+                                        dr.Cells[4].Style.BackColor = Color.Red;
+                                        dr.Cells[4].Value = DateTime.Now.ToString();
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 4, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        PageList[i].UpdateState = "更新失敗";
+                                        Console.WriteLine("ConnectBleTimeOu=====PageList[i].UpdateState" + PageList[i].UpdateState);
+                                        PageList[i].UpdateTime = DateTime.Now.ToString();
+                                        dataGridView1.Rows[dr.Index].Cells[0].Selected = false;
+                                        int failcount = ESLUpdaateFail.Count;
+                                        //Console.WriteLine("dr.Cells[1].Value.ToString()" + dr.Cells[1].Value.ToString() + failcount);
+                                        ESLFailData.Add(PageList[listcount].BleAddress);
+                                        ESLFailData.Add(DateTime.Now.ToString());
+                                        ESLFailData.Add("連線失敗");
+                                        ESLUpdaateFail.Add(ESLFailData);
+                                        // Page1 mPage1 = PageList[listcount];
+                                        foreach (DataGridViewRow dr3 in dataGridView3.Rows)
+                                        {
+                                            Console.WriteLine("1111111111" + dr3.Cells[0].Value.ToString());
+                                            if (dr3.Cells[0].Value != null && dr3.Cells[0].Value.ToString().Contains(macaddress))
+                                            {
+
+                                                dr3.Cells[4].Value = "連線失敗";
+                                                dr3.Cells[6].Value = DateTime.Now.ToString();
+
+                                                break;
+                                            }
+                                        }
+
+                                        foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                        {
+                                            Console.WriteLine("22222222222" + dr4.Cells[1].Value.ToString());
+                                            if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString().Contains(macaddress))
+                                            {
+
+                                                dr4.Cells[2].Style.BackColor = Color.Red;
+                                                dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                break;
+                                            }
+                                        }
+
+
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+
+                            foreach (DataGridViewRow dr in dataGridView1.Rows)
+                            {
+
+                                if (dr.Cells[1].Value != null)
+                                {
+                                    Console.WriteLine("ConnectBleTimeOu=====PageList[i].usingAddress" + PageList[i].usingAddress);
+                                    Console.WriteLine("ConnectBleTimeOu=====PageList[i].usingAddress" + dr.Cells[1].Value.ToString());
+                                    Console.WriteLine("ConnectBleTimeOu=====PageList[i].usingAddress" + dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress));
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                    {
+                                        ESLFailData.Clear();
+                                        dr.Cells[4].Style.BackColor = Color.Red;
+                                        dr.Cells[4].Value = DateTime.Now.ToString();
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 4, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        PageList[i].UpdateState = "更新失敗";
+                                        Console.WriteLine("ConnectBleTimeOu=====PageList[i].UpdateState" + PageList[i].UpdateState);
+                                        PageList[i].UpdateTime = DateTime.Now.ToString();
+                                        dataGridView1.Rows[dr.Index].Cells[0].Selected = false;
+                                        int failcount = ESLUpdaateFail.Count;
+                                        //Console.WriteLine("dr.Cells[1].Value.ToString()" + dr.Cells[1].Value.ToString() + failcount);
+                                        ESLFailData.Add(PageList[listcount].BleAddress);
+                                        ESLFailData.Add(DateTime.Now.ToString());
+                                        ESLFailData.Add("連線失敗");
+                                        ESLUpdaateFail.Add(ESLFailData);
+                                        // Page1 mPage1 = PageList[listcount];
+                                        foreach (DataGridViewRow dr3 in dataGridView3.Rows)
+                                        {
+                                            Console.WriteLine("1111111111" + dr3.Cells[0].Value.ToString());
+                                            if (dr3.Cells[0].Value != null && dr3.Cells[0].Value.ToString().Contains(macaddress))
+                                            {
+
+                                                dr3.Cells[4].Value = "連線失敗";
+                                                dr3.Cells[6].Value = DateTime.Now.ToString();
+
+                                                break;
+                                            }
+                                        }
+
+                                        foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                        {
+                                            Console.WriteLine("22222222222" + dr4.Cells[1].Value.ToString());
+                                            if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString().Contains(macaddress))
+                                            {
+
+                                                dr4.Cells[2].Style.BackColor = Color.Red;
+                                                dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                break;
+                                            }
+                                        }
+
+
+                                    }
+                                }
+                            }
+                            foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                            {
+                                if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() != "")
+                                {
+                                    if (dr.Cells[1].Value.ToString().Contains(',' + PageList[i].usingAddress))
+                                    {
+                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(',' + PageList[i].usingAddress);
+                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 13);
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        break;
+                                    }
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress + ','))
+                                    {
+
+                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(PageList[i].usingAddress + ',');
+                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 13);
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        break;
+                                    }
+
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                    {
+
+                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(PageList[i].usingAddress);
+                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 12);
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        break;
+                                    }
+                                }
+
+                            }
+
+                            foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                            {
+                                if (dr.Cells[12].Value != null && dr.Cells[12].Value.ToString() != "")
+                                {
+                                    if (dr.Cells[12].Value.ToString().Contains(PageList[i].usingAddress))
+                                    {
+                                        if (dr.Cells[1].Value.ToString().Length > 0)
+                                            dr.Cells[1].Value = dr.Cells[1].Value.ToString() + PageList[i].usingAddress;
+                                        else
+                                            dr.Cells[1].Value = PageList[i].usingAddress;
+                                    }
+                                }
+
+                            }
+
+                        }
+
+                    }
+                    deviceIPData = PageList[i].APLink;
+                    // PageList.RemoveAt(i);
+                    Console.WriteLine("aaaaaaa");
+                    break;
+                }
+            }
+
+
             foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
             {
-                if (kvp.Key.Contains(PageList[listcount].APLink))
+                if (kvp.Key.Contains(mPage1.APLink))
                 {
                     kvp.Value.mSmcEsl.DisConnectBleDevice();
                 }
             }
+
+          
+
 
         }
         //---------------
@@ -6099,11 +7232,15 @@ namespace SmcEslSystem
             }
             resetbeacon = true;
 
+            Page mPage = new Page();
+            mPage.BeaconProduct = "0000000000000";
+            BeaconList.Add(mPage);
             foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
             {
-                
-                    //setBeaconTime(BeaconList[beacon_index].APID);
-                    kvp.Value.mSmcEsl.WriteBeaconData("ESL143AP01", "00000000", true);
+
+                //setBeaconTime(BeaconList[beacon_index].APID);
+
+                kvp.Value.mSmcEsl.WriteBeaconData("ESL143AP01", BeaconList[beacon_index].BeaconProduct, true);
             }
             
 
@@ -6166,6 +7303,12 @@ namespace SmcEslSystem
                     }
                 }
 
+                
+
+                if (editdatagirdcell != dataGridView1.Rows[e.RowIndex].Cells[e.ColumnIndex].Value.ToString())
+                {
+
+              
 
                 BackPage bpage = new BackPage();
                 bool eslIsNull = false;
@@ -6413,6 +7556,7 @@ namespace SmcEslSystem
 
                 }
 
+                }
 
 
 
@@ -6879,11 +8023,11 @@ namespace SmcEslSystem
                                         pictureBoxPage1.Image = bmp;
                                         // Console.WriteLine("ININ");
                                         kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
+                                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);
                                         //  System.Threading.Thread.Sleep(100);
                                         pictureBoxPage1.Image = bmp;
                                         EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
+                                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3,0);
                                         richTextBox1.Text = mPage1.usingAddress + "  嘗試連線中請稍候... \r\n";
                                     }
                                 }
@@ -6906,7 +8050,6 @@ namespace SmcEslSystem
                  //   Console.WriteLine("listcount" + listcount);
                     macaddress = PageList[listcount].usingAddress;
                     
-                    ProgressBarVisible(PageList.Count);
 
 
                 }
@@ -7260,6 +8403,7 @@ namespace SmcEslSystem
                     //pictureBox4.Visible = true;
                     dataGridView1.Enabled = false;
                 UpdateESLDen.Text = PageList.Count.ToString();
+                ProgressBarVisible(PageList.Count);
                 List<string> RunAPList = new List<string>();
                 List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).ToList();
                 foreach (Page1 p in list)
@@ -7359,7 +8503,7 @@ namespace SmcEslSystem
 
                                             }
                                         }
-                                            Bitmap bmp;
+                                       /*     Bitmap bmp;
                                             if (mPage1.onsale == "V")
                                             {
                                                  bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
@@ -7371,7 +8515,7 @@ namespace SmcEslSystem
                                                  bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
                                         mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormatUpdate);
-                                            }
+                                            }*/
                                        
                                         //mSmcEsl.TransformImageToData(bmp);
                                         int numVal = Convert.ToInt32(mPage1.no) - 1;
@@ -7382,15 +8526,22 @@ namespace SmcEslSystem
                                         aaa(datagridview1curr, true, numVal);
                                         dataGridView1.Rows[numVal].Cells[17].Value = DateTime.Now.ToString();
                                         mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, numVal, false, openExcelAddress, excel, excelwb, mySheet);
-                                        pictureBoxPage1.Image = bmp;
-                                        //    Console.WriteLine("ININ");
-                                        kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                        kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
-                                        // System.Threading.Thread.Sleep(100);
-                                        EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                                        pictureBoxPage1.Image = bmp;
-                                        mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 8);
-                                        richTextBox1.Text = mPage1.usingAddress + "  嘗試連線中請稍候... \r\n";
+                                      //  pictureBoxPage1.Image = bmp;
+                                            //    Console.WriteLine("ININ");
+                                            //  kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                            //    kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);
+                                            // System.Threading.Thread.Sleep(100);
+                                            //  EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                                            //pictureBoxPage1.Image = bmp;
+                                            //   mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 8,0);
+                                            mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                                            mPage1.TimerConnect.Interval = (20 * 1000);
+                                            mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                                            mPage1.TimerSeconds = new Stopwatch();
+                                            mPage1.TimerSeconds.Start();
+                                            mPage1.TimerConnect.Start();
+                                            kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+                                            richTextBox1.Text = mPage1.usingAddress + "  嘗試連線中請稍候... \r\n";
                                     }
                                 }
                                 break;
@@ -7417,7 +8568,7 @@ namespace SmcEslSystem
                   //  Console.WriteLine("sub" + sub);
                     
                    // dataGridView3.Rows[0].Cells[4].Value = "連線中";
-                    ProgressBarVisible(PageList.Count);
+            
 
 
 
@@ -7789,7 +8940,7 @@ namespace SmcEslSystem
                             }
                             if (canConvert == false && doubletype == false)
                             {
-                                Console.WriteLine("ssssssssssssss");
+                           //     Console.WriteLine("ssssssssssssss");
                                 Boolean maccheck = false;
                             /*  foreach (string mac in MacAddressList)
                               {
@@ -7802,7 +8953,7 @@ namespace SmcEslSystem
                             {
                                 if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString().Contains(decoded))
                                 {
-                                    Console.WriteLine("BBBBBBBBBB");
+                                  //  Console.WriteLine("BBBBBBBBBB");
                                     maccheck = true;
                                     break;
                                 }
@@ -8394,12 +9545,28 @@ namespace SmcEslSystem
 
 
             if (data2check) {
-            ESLFormat.Clear();
-            foreach (DataGridViewRow dr2 in this.dataGridView2.Rows)
+           
+            String selectFormatType = "";
+                foreach (DataGridViewRow dr2 in this.dataGridView2.Rows)
+                {
+                    if (dr2.Cells[0].Value != null && (bool)dr2.Cells[0].Value)
+                    {
+                        selectFormatType = dr2.Cells[4].Value.ToString();
+                        if(selectFormatType=="1")
+                            ESL29Format.Clear();
+                        else if(selectFormatType=="2")
+                            ESL42Format.Clear();
+                        else
+                            ESLFormat.Clear();
+                    }
+                }
+
+             foreach (DataGridViewRow dr2 in this.dataGridView2.Rows)
             {
                 if (dr2.Cells[0].Value != null && (bool)dr2.Cells[0].Value)
                 {
-                    dr2.Cells[2].Value = "V";
+                       
+                        dr2.Cells[2].Value = "V";
 
                          mExcelData.EslStyleCgange(dataGridView2, "V", dr2.Cells[1].Value.ToString(), false, openExcelAddress, excel, excelwb, mySheet);
 
@@ -8426,13 +9593,8 @@ namespace SmcEslSystem
                         }*/
                 }
                 else {
-                        if (dr2.Cells[1].Value.ToString() == oldEslStyle)
-                        {
-                            dr2.Cells[2].Value = DBNull.Value;
-                            mExcelData.EslStyleCgange(dataGridView2, "", dr2.Cells[1].Value.ToString(), false, openExcelAddress, excel, excelwb, mySheet);
-                        }
 
-                            if (dr2.Cells[2].Value.ToString() != "V") { 
+                            if (dr2.Cells[4].Value.ToString() == selectFormatType) { 
                     dr2.Cells[2].Value = DBNull.Value;
                     mExcelData.EslStyleCgange(dataGridView2, "", dr2.Cells[1].Value.ToString(), false, openExcelAddress, excel, excelwb, mySheet);
                         }
@@ -8452,18 +9614,40 @@ namespace SmcEslSystem
                             }
                             if (i != 0 && i != 1&&i!=2)
                             {
-                                if (dr.Cells[i].Value.ToString() != "")
+                                /* if (dr.Cells[i].Value.ToString() != "")
+                                 {
+
+                                     ESLFormat.Add(dr.Cells[i].Value.ToString());
+                                 }
+                                 else
+                                 {
+                                         if (i < dataGridView2.ColumnCount)
+                                             if (dr.Cells[i - 1].Value.ToString() != "")
+                                                 ESLFormat.Add(dr.Cells[i].Value.ToString());
+                                 }*/
+
+                                if (dr.Cells[i].Value != null && dr.Cells[i].Value.ToString() != "")
                                 {
-                                    ESLFormat.Add(dr.Cells[i].Value.ToString());
+                                    if (dr.Cells[4].Value.ToString() == "1")
+                                        ESL29Format.Add(dr.Cells[i].Value.ToString());
+                                    else if (dr.Cells[4].Value.ToString() == "2")
+                                        ESL42Format.Add(dr.Cells[i].Value.ToString());
+                                    else
+                                        ESLFormat.Add(dr.Cells[i].Value.ToString());
+                                    //   Console.WriteLine("ESLSaleFormat" + dr7.Cells[i].Value.ToString());
                                 }
                                 else
                                 {
-                                        if (i < dataGridView2.ColumnCount)
-                                            if (dr.Cells[i - 1].Value.ToString() != "")
-                                                ESLFormat.Add(dr.Cells[i].Value.ToString());
+                                    if (i < dataGridView2.ColumnCount)
+                                        if (dr.Cells[i - 1].Value.ToString() != "" && dr.Cells[4].Value.ToString() == "0")
+                                            ESLFormat.Add(dr.Cells[i].Value.ToString());
+                                        else if (dr.Cells[i - 1].Value.ToString() != "" && dr.Cells[4].Value.ToString() == "1")
+                                            ESL29Format.Add(dr.Cells[i].Value.ToString());
+                                        else if (dr.Cells[i - 1].Value.ToString() != "" && dr.Cells[4].Value.ToString() == "2")
+                                            ESL42Format.Add(dr.Cells[i].Value.ToString());
                                 }
-                                    //       Console.WriteLine(dr.Cells[i].Value.ToString());
-                             }
+                                //       Console.WriteLine(dr.Cells[i].Value.ToString());
+                            }
                     }
 
                 }
@@ -8473,6 +9657,20 @@ namespace SmcEslSystem
 
             if (data7check) { 
             ESLSaleFormat.Clear();
+                String selectFormatType = "";
+                foreach (DataGridViewRow dr7 in this.dataGridView7.Rows)
+                {
+                    if (dr7.Cells[0].Value != null && (bool)dr7.Cells[0].Value)
+                    {
+                        selectFormatType = dr7.Cells[4].Value.ToString();
+                        if (selectFormatType == "1")
+                            ESLSale29Format.Clear();
+                        else if (selectFormatType == "2")
+                            ESLSale42Format.Clear();
+                        else
+                            ESLSaleFormat.Clear();
+                    }
+                }
             foreach (DataGridViewRow dr7 in this.dataGridView7.Rows)
             {
                 if (dr7.Cells[0].Value != null && (bool)dr7.Cells[0].Value)
@@ -8485,7 +9683,7 @@ namespace SmcEslSystem
                             {
                                 if (dr.Cells[13].Value != null && dr7.Cells[1].Value != null && dr.Cells[13].Value.ToString() != dr7.Cells[1].Value.ToString())
                                 {
-                                    ESLStyleDataChange = true;
+                                    ESLSaleStyleDataChange = true;
                                     button19.Enabled = true;
                                     button19.BackColor = Color.FromArgb(255, 255, 192);
                                     break;
@@ -8504,13 +9702,7 @@ namespace SmcEslSystem
                 }
                 else
                 {
-                        if (dr7.Cells[1].Value.ToString() == oldEslSaleStyle)
-                        {
-                            dr7.Cells[2].Value = DBNull.Value;
-                            mExcelData.EslStyleCgange(dataGridView7, "", dr7.Cells[1].Value.ToString(), false, openExcelAddress, excel, excelwb, mySheet);
-                        }
-                        
-                    if (dr7.Cells[2].Value.ToString() != "V")
+                    if (dr7.Cells[4].Value.ToString() ==selectFormatType)
                         {
                             dr7.Cells[2].Value = DBNull.Value;
                             mExcelData.EslStyleCgange(dataGridView7, "", dr7.Cells[1].Value.ToString(), false, openExcelAddress, excel, excelwb, mySheet);
@@ -8533,17 +9725,38 @@ namespace SmcEslSystem
                             }
                             if (i != 0 && i != 1 && i != 2)
                             {
-                                if (dr77.Cells[i].Value.ToString() != "")
-                                {
-                                    ESLSaleFormat.Add(dr77.Cells[i].Value.ToString());
+                                /*  if (dr77.Cells[i].Value.ToString() != "")
+                                  {
+                                      ESLSaleFormat.Add(dr77.Cells[i].Value.ToString());
 
-                                    //            Console.WriteLine(dr.Cells[i].Value.ToString());
+                                      //            Console.WriteLine(dr.Cells[i].Value.ToString());
+                                  }
+                                  else
+                                  {
+                                          if (i < dataGridView7.ColumnCount)
+                                              if (dr77.Cells[i - 1].Value.ToString() != "")
+                                              ESLSaleFormat.Add(dr77.Cells[i].Value.ToString());
+                                  }*/
+
+                                if (dr77.Cells[i].Value != null && dr77.Cells[i].Value.ToString() != "")
+                                {
+                                    if (dr77.Cells[4].Value.ToString() == "1")
+                                        ESLSale29Format.Add(dr77.Cells[i].Value.ToString());
+                                    else if (dr77.Cells[4].Value.ToString() == "2")
+                                        ESLSale42Format.Add(dr77.Cells[i].Value.ToString());
+                                    else
+                                        ESLSaleFormat.Add(dr77.Cells[i].Value.ToString());
+                                    //   Console.WriteLine("ESLSaleFormat" + dr777.Cells[i].Value.ToString());
                                 }
                                 else
                                 {
-                                        if (i < dataGridView7.ColumnCount)
-                                            if (dr77.Cells[i - 1].Value.ToString() != "")
+                                    if (i < dataGridView7.ColumnCount)
+                                        if (dr77.Cells[i - 1].Value.ToString() != "" && dr77.Cells[4].Value.ToString() == "0")
                                             ESLSaleFormat.Add(dr77.Cells[i].Value.ToString());
+                                        else if (dr77.Cells[i - 1].Value.ToString() != "" && dr77.Cells[4].Value.ToString() == "1")
+                                            ESLSale29Format.Add(dr77.Cells[i].Value.ToString());
+                                        else if (dr77.Cells[i - 1].Value.ToString() != "" && dr77.Cells[4].Value.ToString() == "2")
+                                            ESLSale42Format.Add(dr77.Cells[i].Value.ToString());
                                 }
                             }
 
@@ -8633,6 +9846,47 @@ namespace SmcEslSystem
             property.SelectedObject(aaa);
             propertyGrid1.SelectedObject = property;
             //propertyGrid1.SelectedObject.TextBoxProperty(sender) ;
+        }
+
+        private void pictureBox2Q_SizeChanged(object sender, EventArgs e)
+        {///
+            pictureboxBarcode pictureBoxQ =  sender as pictureboxBarcode;
+            Console.WriteLine("pictureBox2Q_SizeChanged");
+            foreach (Control x in pictureBoxQ.Controls)
+            {
+                Console.WriteLine("pictureBox2Q");
+                Console.WriteLine(x.Name);
+            }
+            Bitmap bqr = new Bitmap(pictureBoxQ.Height, pictureBoxQ.Width);
+            BarcodeWriter qr = new BarcodeWriter();       // 建立條碼物件
+            qr.Format = BarcodeFormat.QR_CODE;
+            qr.Options.Width = Convert.ToInt32(pictureBoxQ.Height);
+            qr.Options.Height = Convert.ToInt32(pictureBoxQ.Width);
+            qr.Options.Margin = 0;
+            bqr = qr.Write(pictureBoxQ.barcodedata.ToString());
+            pictureBoxQ.Image = bqr;
+        }
+
+        private void pictureBox2B_SizeChanged(object sender, EventArgs e)
+        {///
+            pictureboxBarcode pictureBoxB = sender as pictureboxBarcode;
+            Console.WriteLine("pictureBox2B_SizeChanged");
+
+
+            foreach (Control x in pictureBoxB.Controls)
+            {
+                Console.WriteLine("pictureBox2B");
+                Console.WriteLine(x.Name);
+            }
+            Bitmap bqr = new Bitmap(pictureBoxB.Height, pictureBoxB.Width);
+            BarcodeWriter barcode_w = new BarcodeWriter();       // 建立條碼物件
+            barcode_w.Format = BarcodeFormat.CODE_93;
+            barcode_w.Options.Width = Convert.ToInt32(pictureBoxB.Height);
+            barcode_w.Options.Height = Convert.ToInt32(pictureBoxB.Width);
+            barcode_w.Options.Margin = 0;
+            barcode_w.Options.PureBarcode = true;
+            bqr = barcode_w.Write(pictureBoxB.barcodedata.ToString());
+            pictureBoxB.Image = bqr;
         }
 
 
@@ -8918,7 +10172,7 @@ namespace SmcEslSystem
         {
             if (e.Button == MouseButtons.Left)
             {
-                Console.WriteLine("dataGridView2" + dataGridView2.CurrentCell.RowIndex + "dataGridView7" + dataGridView7.CurrentCell.RowIndex);
+               // Console.WriteLine("dataGridView2" + dataGridView2.CurrentCell.RowIndex + "dataGridView7" + dataGridView7.CurrentCell.RowIndex);
                 if (!dataGridView2.Rows[0].Selected && !dataGridView7.Rows[0].Selected)
                 { 
                     PictureBox pic = (PictureBox)sender;
@@ -9035,10 +10289,19 @@ namespace SmcEslSystem
             {
                 textBox.SetBounds(12, 36, 372, 20);
                 textBox.Anchor = textBox.Anchor | AnchorStyles.Right;
-                form.Controls.AddRange(new Control[] { label, textBox, buttonOk, buttonCancel });
+                ComboBox comboBox = new ComboBox();
+                comboBox.Items.Add("2.13");
+                comboBox.Items.Add("2.9");
+                comboBox.Items.Add("4.2");
+                comboBox.SelectedIndex = 0;
+                comboBox.SelectedIndexChanged += new EventHandler(ComboBoxSize_SelectedIndexChanged);
+                comboBox.SetBounds(12, 70, 372, 20);
+                comboBox.Anchor = textBox.Anchor | AnchorStyles.Right;
+                form.Controls.AddRange(new Control[] { label, textBox, comboBox, buttonOk, buttonCancel });
                 textBox.TextChanged += new EventHandler(TextBox_TextChanged);
             }
-            else if (state == "DateTimePicker")
+
+            else if (state == "DateTimePickerSale")
             {
                 DateTimePicker TimeS = new DateTimePicker();
                 DateTimePicker TimeE = new DateTimePicker();
@@ -9050,12 +10313,13 @@ namespace SmcEslSystem
                 TimeS.ShowUpDown = true;
                 TimeS.SetBounds(12, 36, 372, 20);
                 TimeS.Anchor = TimeS.Anchor | AnchorStyles.Left;
-               
+
                 TimeS.ValueChanged += new EventHandler(TimeS_ValueChanged);
 
                 TitimeELabel.SetBounds(9, 74, 372, 13);
                 TitimeELabel.Text = "結束時間:";
                 TitimeELabel.AutoSize = true;
+
 
                 BeaconTimeE = DateTime.Now.ToString("yyyy/MM/dd HH: mm: ss");
                 TimeE.Format = DateTimePickerFormat.Custom;
@@ -9070,11 +10334,84 @@ namespace SmcEslSystem
 
                 form.Controls.AddRange(new Control[] { label, TitimeELabel, TimeS, TimeE, buttonOk, buttonCancel });
             }
+            else if (state == "DateTimePicker")
+            {
+                DateTimePicker TimeS = new DateTimePicker();
+                DateTimePicker TimeE = new DateTimePicker();
+                ComboBox ComboBoxsales = new ComboBox();
+                ComboBox ComboBoxdays = new ComboBox();
+                Label TitimeELabel = new Label();
+                Label ComboBoSalesELabel = new Label();
+                Label ComboBoDaysELabel = new Label();
+                List<Item> comboItemsList = new List<Item>();
+                Button beaconClear = new Button();
+
+                beaconClear.Text = "Beacon清除";
+                beaconClear.DialogResult = DialogResult.Cancel;
+                beaconClear.SetBounds(30, 150, 75, 23);
+                beaconClear.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+
+                for (int i=1;i<100;i++) {
+                   // Item comboitem = new Item(i.ToString(), i);
+                    ComboBoxsales.Items.Add(new Item(i.ToString(), i));
+                    ComboBoxdays.Items.Add(new Item(i.ToString(), i));
+                    // comboItemsList.Add(comboitem);
+                }
+
+                Double item = Convert.ToDouble("1");
+
+                DateTime localDate = DateTime.Now;
+                BeaconTimeS = DateTime.Now.ToString("yyyy/MM/dd HH: mm: ss");
+                DateTime localDateadd = localDate.AddDays(item);
+
+                BeaconTimeE = localDateadd.ToString("yyyy/MM/dd HH: mm: ss");
+                /*  TimeS.Format = DateTimePickerFormat.Custom;
+                  TimeS.CustomFormat = "yyyy/MM/dd HH:mm:ss";
+                  TimeS.ShowUpDown = true;
+                  TimeS.SetBounds(12, 36, 372, 20);
+                  TimeS.Anchor = TimeS.Anchor | AnchorStyles.Left;
+
+                  TimeS.ValueChanged += new EventHandler(TimeS_ValueChanged);
+
+                  TitimeELabel.SetBounds(9, 74, 372, 13);
+                  TitimeELabel.Text = "結束時間:";
+                  TitimeELabel.AutoSize = true;
+
+                  BeaconTimeE = DateTime.Now.ToString("yyyy/MM/dd HH: mm: ss");
+                  TimeE.Format = DateTimePickerFormat.Custom;
+                  TimeE.CustomFormat = "yyyy/MM/dd HH:mm:ss";
+                  TimeE.ShowUpDown = true;
+                  TimeE.SetBounds(12, 90, 372, 20);
+                  TimeE.Anchor = TimeE.Anchor | AnchorStyles.Right;
+                  TimeE.ValueChanged += new EventHandler(TimeE_ValueChanged);*/
+
+                ComboBoxsales.SetBounds(52, 90, 75, 23); 
+                ComboBoxdays.SetBounds(172, 90, 75, 23);
+                ComboBoSalesELabel.SetBounds(12, 90, 372, 13);
+                ComboBoSalesELabel.Text = "折數:";
+                ComboBoSalesELabel.AutoSize = true;
+                ComboBoDaysELabel.SetBounds(130, 90, 372, 13);
+                ComboBoDaysELabel.Text = "天數:";
+                ComboBoDaysELabel.AutoSize = true;
+                ComboBoxsales.SelectedIndex = 0;
+                ComboBoxdays.SelectedIndex = 0;
+                ComboBoxdays.SelectedIndexChanged += new EventHandler(ComboBoDays_ValueChanged);
+                ComboBoxsales.SelectedIndexChanged += new EventHandler(ComboBoxsales_ValueChanged);
+                beaconClear.Click += new EventHandler(beaconClear_Click);
+                buttonOk.SetBounds(228, 150, 75, 23);
+                buttonCancel.SetBounds(309, 150, 75, 23);
+
+                buttonOk.SetBounds(228, 150, 75, 23);
+                form.Controls.AddRange(new Control[] { beaconClear, ComboBoxsales, ComboBoxdays, ComboBoSalesELabel, ComboBoDaysELabel, buttonOk, buttonCancel });
+                //form.Controls.AddRange(new Control[] { label, TitimeELabel, TimeS, TimeE, ComboBoxsales, ComboBoxdays, ComboBoSalesELabel, ComboBoDaysELabel, buttonOk, buttonCancel });
+            }
    
             DialogResult dialogResult = form.ShowDialog();
             dialogtext = textBox.Text;
             return dialogResult;
         }
+
+
 
         private void TextBox_TextChanged(object sender, EventArgs e)
         {
@@ -9120,6 +10457,62 @@ namespace SmcEslSystem
             BeaconTimeE = TimeE.Text;
         }
 
+        private void ComboBoDays_ValueChanged(object sender, EventArgs e)
+        {
+            ComboBox cb = (ComboBox)sender;
+            if (cb.SelectedItem.ToString() != null)
+            { 
+            Double item = Convert.ToDouble(cb.SelectedItem.ToString());
+
+            DateTime localDate = DateTime.Now;
+            BeaconTimeS = DateTime.Now.ToString("yyyy/MM/dd HH: mm: ss");
+            DateTime localDateadd = localDate.AddDays(item);
+               
+            BeaconTimeE = localDateadd.ToString("yyyy/MM/dd HH: mm: ss");
+                Console.WriteLine("fgh" + BeaconTimeE);
+                if (Convert.ToInt32(cb.SelectedItem.ToString()) < 10)
+                    beacondays = "0" + cb.SelectedItem.ToString();
+                else
+                    beacondays = cb.SelectedItem.ToString();
+            }
+        }
+
+        private void ComboBoxsales_ValueChanged(object sender, EventArgs e)
+        {
+            ComboBox cb = (ComboBox)sender;
+            if (cb.SelectedItem.ToString() != null)
+            {
+                if (Convert.ToInt32(cb.SelectedItem.ToString()) < 10)
+                    beaconsales = "0" + cb.SelectedItem.ToString();
+                else
+                    beaconsales = cb.SelectedItem.ToString();
+            }
+        }
+
+        private void beaconClear_Click(object sender, EventArgs e)
+        {
+            List<string> nullbeacon = new List<string>();
+            foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+            {
+                if (dr.Cells[3].Value != null && (bool)dr.Cells[3].Value)
+                {
+                    dr.Cells[21].Value = DBNull.Value;
+                    dr.Cells[22].Value = DBNull.Value;
+                    dr.Cells[23].Value = DBNull.Value;
+                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 21, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 22, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 23, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                    nullbeacon.Add(dr.Cells[5].Value.ToString());
+                    productState(dr);
+                }
+            }
+
+            if (nullbeacon.Count != 0)
+                beacon_data_set(nullbeacon, "", "", "");
+        }
+        
+
+
         private void ComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             ComboBox cb = (ComboBox)sender;
@@ -9127,6 +10520,17 @@ namespace SmcEslSystem
             if (item != null)
                 selectIndex = item;
         }
+
+
+        private void ComboBoxSize_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            ComboBox cb = (ComboBox)sender;
+            string item = cb.Text;
+            if (item != null)
+                selectSize = item;
+        }
+
+        
 
         private void toolStripLabel4_Click(object sender, EventArgs e)
         {
@@ -9232,20 +10636,45 @@ namespace SmcEslSystem
                 string filename = openExcelAddress;
                 if (ESLStyleCover)
                 {
+                    Console.WriteLine("ESLStyleSave1");
+                    int size = 0;
+                    if (pictureBox1.Height == 104)
+                        size = 0;
+                    else if (pictureBox1.Height == 128)
+                        size = 1;
+                    else if (pictureBox1.Height == 300)
+                        size = 2;
+
                     Console.WriteLine("ESLStyleCover");
-                    mExcelData.ESLStyleCover(label1.Text,pictureBox1,excel,excelwb,mySheet);
+                    mExcelData.ESLStyleCover(label1.Text,pictureBox1,excel,excelwb,mySheet,size);
                 }
                 else
                 {
                     if (ESLStyleSave)
                     {
                         Console.WriteLine("ESLStyleSave1");
-                        mExcelData.dataGridView2Update(dataGridView2, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 0);
+                        int size = 0;
+                        if (pictureBox1.Height == 104)
+                            size = 0;
+                        else if (pictureBox1.Height == 128)
+                            size = 1;
+                        else if (pictureBox1.Height == 300)
+                            size = 2;
+
+                        mExcelData.dataGridView2Update(dataGridView2, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 0,size);
                     }
                     if (ESLSaleStyleSave)
                     {
                         Console.WriteLine("ESLStyleSave2");
-                        mExcelData.dataGridView2Update(dataGridView2, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 1);
+                        int size = 0;
+                        if (pictureBox1.Height == 104)
+                            size = 0;
+                        else if (pictureBox1.Height == 128)
+                            size = 1;
+                        else if (pictureBox1.Height == 300)
+                            size = 2;
+
+                        mExcelData.dataGridView2Update(dataGridView2, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 1,size);
                     }
                 }
 
@@ -9405,7 +10834,7 @@ namespace SmcEslSystem
 
         private void codecreate(string data, string name, bool state) {
 
-            PictureBox pictureBox2 = new PictureBox();
+            pictureboxBarcode pictureBox2 = new pictureboxBarcode();
             pictureBox1.Controls.Add(pictureBox2);
             if (state)
             {
@@ -9427,6 +10856,8 @@ namespace SmcEslSystem
                 //更改項目@#
                 ///pictureBox2.Text =;
                 pictureBox2.Tag = "B";
+                pictureBox2.barcodedata = "93213450A0BB";
+                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2B_SizeChanged);
                 //pictureBox2.AutoSize = true;
 
 
@@ -9452,6 +10883,8 @@ namespace SmcEslSystem
                 pictureBox2.Location = new Point(114 ,45);
 
                 pictureBox2.Tag = "Q";
+                pictureBox2.barcodedata = "http://www.smartchip.com.tw";
+                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2Q_SizeChanged);
                 // pictureBox2.AutoSize = true;
             }
 
@@ -9549,7 +10982,29 @@ namespace SmcEslSystem
                         {
                             if (dataGridView.Rows[currentRow].Cells[g].Value == null)
                                 break;
-                            if (dataGridView.Rows[currentRow].Cells[g].Value.ToString() == "L" || dataGridView.Rows[currentRow].Cells[g].Value.ToString() == "Header")
+
+                            if(dataGridView.Rows[currentRow].Cells[4].Value.ToString()== "0")
+                            {
+                                pictureBox1.BackColor = Color.White;
+                                pictureBox1.Size = new Size(212, 104);
+                                pictureBox1.Location = new Point(235, 81);
+                                panel1.Controls.Add(pictureBox1);
+                            }
+                            else if (dataGridView.Rows[currentRow].Cells[4].Value.ToString() == "1")
+                            {
+                                pictureBox1.BackColor = Color.White;
+                                pictureBox1.Size = new Size(296, 126);
+                                pictureBox1.Location = new Point(151, 59);
+                                panel1.Controls.Add(pictureBox1);
+                            }
+                            else if (dataGridView.Rows[currentRow].Cells[4].Value.ToString() == "2")
+                            {
+                                pictureBox1.BackColor = Color.White;
+                                pictureBox1.Size = new Size(400, 300);
+                                pictureBox1.Location = new Point(88, 5);
+                                panel1.Controls.Add(pictureBox1);
+                            }
+                        if (dataGridView.Rows[currentRow].Cells[g].Value.ToString() == "L" || dataGridView.Rows[currentRow].Cells[g].Value.ToString() == "Header")
                             {
 
                                 Label LabelDemo = new Label();
@@ -9658,7 +11113,7 @@ namespace SmcEslSystem
                                 Regex NumandEG = new Regex("[^A-Za-z0-9]");
                                 bool type;
                                 string barcodevalue;
-                                PictureBox pictureBox2 = new PictureBox();
+                                pictureboxBarcode pictureBox2 = new pictureboxBarcode();
                                 pictureBox2.Tag = dataGridView.Rows[currentRow].Cells[g].Value.ToString();
                               //  Console.WriteLine(" pictureBox2.Name" + dataGridView2.Rows[currentRow].Cells[g + 1].Value.ToString());
                                 pictureBox2.Name = dataGridView.Rows[currentRow].Cells[g + 1].Value.ToString();
@@ -9699,14 +11154,17 @@ namespace SmcEslSystem
                                 pictureBox2.Location = new Point(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 g = g + 12;
                                 bar = barcode_w.Write("4253786521345");
+                                pictureBox2.barcodedata = "4253786521345";
                                 pictureBox2.Image = bar;
                                 pictureBox2.MouseDown += new System.Windows.Forms.MouseEventHandler(Label_MouseDown);
                                 pictureBox2.MouseMove += new System.Windows.Forms.MouseEventHandler(picture_MouseMove);
                                 pictureBox2.Click += new System.EventHandler(this.PictureBoxDemo_Click);
-                            }
+                                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2B_SizeChanged);
+                            // pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2Q_SizeChanged);
+                        }
                             else if (dataGridView.Rows[currentRow].Cells[g].Value.ToString() == "Q")
                             {
-                                PictureBox pictureBox2 = new PictureBox();
+                                pictureboxBarcode pictureBox2 = new pictureboxBarcode();
                                 pictureBox2.Tag = dataGridView.Rows[currentRow].Cells[g].Value.ToString();
                                 pictureBox2.Name = dataGridView.Rows[currentRow].Cells[g + 1].Value.ToString();
                                 foreach (DataGridViewRow dr8 in dataGridView8.Rows)
@@ -9723,6 +11181,7 @@ namespace SmcEslSystem
                                 pictureBox1.Controls.Add(pictureBox2);
                                 pictureBox2.Size = new System.Drawing.Size(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 pictureBox2.SizeMode = PictureBoxSizeMode.CenterImage;
+                                pictureBox2.barcodedata = "http://www.smartchip.com.tw";
                                 Bitmap bqr = new Bitmap(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 BarcodeWriter qr = new BarcodeWriter();       // 建立條碼物件
                                 qr.Format = BarcodeFormat.QR_CODE;
@@ -9734,11 +11193,13 @@ namespace SmcEslSystem
                                 pictureBox2.Location = new Point(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 g = g + 12;
                                 bqr = qr.Write("http://www.smartchip.com.tw");
+                            
                                 pictureBox2.Image = bqr;
                                 pictureBox2.MouseDown += new System.Windows.Forms.MouseEventHandler(Label_MouseDown);
                                 pictureBox2.MouseMove += new System.Windows.Forms.MouseEventHandler(picture_MouseMove);
                                 pictureBox2.Click += new System.EventHandler(this.PictureBoxDemo_Click);
-                            }
+                                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2Q_SizeChanged);
+                        }
                             picturelabel++;
                         }
                     }
@@ -9791,8 +11252,28 @@ namespace SmcEslSystem
             }
             int relrowno = 0;
 
+
             List<DataGridViewRow> toDelete = new List<DataGridViewRow>();
-            DialogResult result = MessageBox.Show("格式是否刪除?", "Confirmation", MessageBoxButtons.YesNoCancel);
+
+
+            foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+            {
+                if (dr.Cells[0].Value != null && dr.Cells[0].Value.ToString() == "True")
+                {
+                    if (dr.Index == 0)
+                    {
+                        MessageBox.Show("基本預設格式無法刪除");
+                        return;
+                    }
+                    deldataview2no.Add(dr.Cells[0].RowIndex);
+                    mExcelData.dataviewdel(dataGridView2, deldataview2no, "工作表2", openExcelAddress, excel, excelwb, mySheet);
+                    dataGridView2.Rows.Remove(dr);
+                    //  toDelete.Add(dr);
+                    break;
+                }
+            }
+
+            DialogResult result = MessageBox.Show("版型是否刪除?", "刪除", MessageBoxButtons.YesNo);
             if (result == DialogResult.Yes)
             { 
                 foreach (DataGridViewRow dr in this.dataGridView2.Rows)
@@ -10290,7 +11771,8 @@ namespace SmcEslSystem
                 {
                     if (kvp.Key.Contains(mPage1.APLink))
                     {
-               //         Console.WriteLine("kvp.Key" + kvp.Key);
+                        //         Console.WriteLine("kvp.Key" + kvp.Key);
+                      //  ConnectBleTimeOut.Start();
                         kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
                     }
                 }
@@ -10375,15 +11857,15 @@ namespace SmcEslSystem
                 dataGridView1.Enabled = true;
                 return;
             }
+
             EslUdpTest.Tools tool = new EslUdpTest.Tools();
+            //Tools tool = new Tools();
             tool.onApScanEvent += new EventHandler(AP_Scan);
             tool.SNC_GetAP_Info();
-          //  Console.WriteLine("---");
+            //  Console.WriteLine("---");
             setLocalTime();
             //datagridview1curr = 2;
             datagridview1curr = 2;
-            
-
         }
 
         private void setLocalTime() {
@@ -10411,11 +11893,15 @@ namespace SmcEslSystem
             int mm = int.Parse(Convert.ToDateTime(BeaconTimeS).ToString("mm"));
 
             //  mSmcEsl.setBeaconTime(yy, MM, dd, HH, mm, eyy, eMM, edd, eHH, emm);
-            foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
-                if (kvp.Key.Contains(APIP))
+
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
                 {
-                    kvp.Value.mSmcEsl.setBeaconTime(yy, MM, dd, HH, mm, 99, 12, 31, 23, 59);
+                    if (kvp.Key.Contains(APIP))
+                    {
+                        kvp.Value.mSmcEsl.setBeaconTime(yy, MM, dd, HH, mm, 99, 12, 31, 23, 59);
+                    }
                 }
+
         }
 
       /*  private void button10_Click(object sender, EventArgs e)
@@ -10542,6 +12028,7 @@ namespace SmcEslSystem
                 {
                     break;
                 }
+
                 if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString().Contains(textBox3.Text))
                 {
                     dr.Visible = true;
@@ -10571,7 +12058,7 @@ namespace SmcEslSystem
 
 
             string value = "Document 1";
-            if (InputBox("DateTimePicker", "特價時間設定", "開始時間:", ref value) == DialogResult.OK)
+            if (InputBox("DateTimePickerSale", "特價時間設定", "開始時間:", ref value) == DialogResult.OK)
             {
 
                 foreach (DataGridViewRow dr in this.dataGridView1.Rows)
@@ -10629,6 +12116,28 @@ namespace SmcEslSystem
                         x.Dispose();
                     }
 
+                }
+                Console.WriteLine("selectSize:" + selectSize);
+                if (selectSize == "2.13")
+                {
+                    pictureBox1.BackColor = Color.White;
+                    pictureBox1.Size = new Size(212, 104);
+                    pictureBox1.Location = new Point(235, 81);
+                    panel1.Controls.Add(pictureBox1);
+                }
+                else if (selectSize == "2.9")
+                {
+                    pictureBox1.BackColor = Color.White;
+                    pictureBox1.Size = new Size(296, 128);
+                    pictureBox1.Location = new Point(151, 59);
+                    panel1.Controls.Add(pictureBox1);
+                }
+                else if (selectSize == "4.2")
+                {
+                    pictureBox1.BackColor = Color.White;
+                    pictureBox1.Size = new Size(400, 300);
+                    pictureBox1.Location = new Point(88, 5);
+                    panel1.Controls.Add(pictureBox1);
                 }
 
                 foreach (DataGridViewRow dr8 in dataGridView8.Rows)
@@ -10763,7 +12272,7 @@ namespace SmcEslSystem
                                 Regex NumandEG = new Regex("[^A-Za-z0-9]");
                                 bool type;
                                 string barcodevalue;
-                                PictureBox pictureBox2 = new PictureBox();
+                                pictureboxBarcode pictureBox2 = new pictureboxBarcode();
                                 pictureBox2.Tag = dataGridView.Rows[currentRow].Cells[g].Value.ToString();
                                 //  Console.WriteLine(" pictureBox2.Name" + dataGridView2.Rows[currentRow].Cells[g + 1].Value.ToString());
                                 pictureBox2.Name = dataGridView.Rows[currentRow].Cells[g + 1].Value.ToString();
@@ -10805,14 +12314,17 @@ namespace SmcEslSystem
                                 pictureBox2.Location = new Point(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 g = g + 12;
                                 bar = barcode_w.Write("4253786521345");
+                                pictureBox2.barcodedata = "4253786521345";
                                 pictureBox2.Image = bar;
                                 pictureBox2.MouseDown += new System.Windows.Forms.MouseEventHandler(Label_MouseDown);
                                 pictureBox2.MouseMove += new System.Windows.Forms.MouseEventHandler(picture_MouseMove);
                                 pictureBox2.Click += new System.EventHandler(this.PictureBoxDemo_Click);
+                                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2B_SizeChanged);
+
                             }
                             else if (dataGridView.Rows[currentRow].Cells[g].Value.ToString() == "Q")
                             {
-                                PictureBox pictureBox2 = new PictureBox();
+                                pictureboxBarcode pictureBox2 = new pictureboxBarcode();
                                 pictureBox2.Tag = dataGridView.Rows[currentRow].Cells[g].Value.ToString();
                                 pictureBox2.Name = dataGridView.Rows[currentRow].Cells[g + 1].Value.ToString();
                                 g = g + 2;
@@ -10841,10 +12353,12 @@ namespace SmcEslSystem
                                 pictureBox2.Location = new Point(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 g = g + 12;
                                 bqr = qr.Write("http://www.smartchip.com.tw");
+                                pictureBox2.barcodedata = "http://www.smartchip.com.tw";
                                 pictureBox2.Image = bqr;
                                 pictureBox2.MouseDown += new System.Windows.Forms.MouseEventHandler(Label_MouseDown);
                                 pictureBox2.MouseMove += new System.Windows.Forms.MouseEventHandler(picture_MouseMove);
                                 pictureBox2.Click += new System.EventHandler(this.PictureBoxDemo_Click);
+                                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2Q_SizeChanged);
                             }
                             picturelabel++;
                         }
@@ -11055,6 +12569,7 @@ namespace SmcEslSystem
                 reset = true;
                 UpdateESLDen.Text = PageList.Count.ToString();
                 List<string> RunAPList = new List<string>();
+                ProgressBarVisible(PageList.Count);
                 List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).ToList();
                 foreach (Page1 p in list)
                 {
@@ -11087,15 +12602,20 @@ namespace SmcEslSystem
                                         dataGridView4.Rows[numVal].Selected = true;
                                         dataGridView4.Rows[numVal].Cells[2].Value = DateTime.Now.ToString();
                                         Console.WriteLine("ININ"+ PageList[i].usingAddress+ PageList[i].APLink);
-                                        kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                        kvp.Value.mSmcEsl.writeESLDataBuffer(PageList[i].usingAddress);
+                                     //   kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                     //   kvp.Value.mSmcEsl.writeESLDataBuffer(PageList[i].usingAddress,0);
                                         pictureBoxPage1.Image = bmp;
                                         //System.Threading.Thread.Sleep(100);
                                         //    SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
                                         //  mSmcEsl.UpdataESLDataFromBuffer(PageList[i].usingAddress, 0, 3);
                                         richTextBox1.Text = richTextBox1.Text +PageList[i].usingAddress + "  嘗試連線中請稍候... \r\n";
-                                       
-                                        System.Threading.Thread.Sleep(1000);
+                                            mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                                            mPage1.TimerConnect.Interval = (20 * 1000);
+                                            mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                                            mPage1.TimerSeconds = new Stopwatch();
+                                            mPage1.TimerSeconds.Start();
+                                            mPage1.TimerConnect.Start();
+                                            System.Threading.Thread.Sleep(1000);
                                         /*   if (PageList[listcount + 1].APLink  !=mPage1.APLink) {
                                                kvp.Value.mSmcEsl.TransformImageToData(bmp);
                                                kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
@@ -11120,7 +12640,6 @@ namespace SmcEslSystem
                  //   Console.WriteLine("listcount" + listcount);
                     macaddress = PageList[listcount].usingAddress;
                   //  richTextBox1.Text = mPage1.usingAddress + "  嘗試連線中請稍候... \r\n";
-                    ProgressBarVisible(PageList.Count);
 
 
                 }
@@ -11224,7 +12743,10 @@ namespace SmcEslSystem
                     MessageBox.Show("請先連接AP"+ textBeforeEdit);
                     DataGridViewCheckBoxCell chk = (DataGridViewCheckBoxCell)dataGridView1.Rows[e.RowIndex].Cells[0];
                     if(chk.TrueValue== chk.Value)
+                    {
                         chk.Value = chk.FalseValue;
+                        chk.ReadOnly = true;
+                    }
                     else
                         chk.Value = chk.TrueValue;
 
@@ -11264,7 +12786,7 @@ namespace SmcEslSystem
 
 
                         Console.WriteLine("e.ColumnIndex" + e.ColumnIndex+ "e.RowIndex"+ e.RowIndex);
-                        string[] drrow = drR.Cells[1].Value.ToString().Split(',');
+                        string[] drrow = drR.Cells[12].Value.ToString().Split(',');
                         drR.Cells[16].Value = "V";
                         for (int bb = 0; bb < drrow.Length; bb++)
                         {
@@ -11284,6 +12806,7 @@ namespace SmcEslSystem
                             mPageC.HeadertextALL = headertextall;
                             mPageC.usingAddress = drrow[bb];
                             mPageC.actionName = "down";
+
                             foreach (DataGridViewRow drAP in this.dataGridView4.Rows)
                             {
                                 if (drAP.Cells[1].Value != null && drAP.Cells[1].Value.ToString() == drrow[bb])
@@ -11328,11 +12851,11 @@ namespace SmcEslSystem
                         mPage.Special_offer = drR.Cells[10].Value.ToString();
                         mPage.Web = drR.Cells[11].Value.ToString();
                         mPage.HeadertextALL = headertextall;
-                        mPage.usingAddress = drR.Cells[1].Value.ToString();
+                        mPage.usingAddress = drR.Cells[12].Value.ToString();
                         mPage.actionName = "down";
                         foreach (DataGridViewRow drAP in this.dataGridView4.Rows)
                         {
-                            if (drAP.Cells[1].Value != null && drAP.Cells[1].Value.ToString() == drR.Cells[1].Value.ToString())
+                            if (drAP.Cells[1].Value != null && drAP.Cells[1].Value.ToString() == drR.Cells[12].Value.ToString())
                             {
                                 mPage.APLink = drAP.Cells[8].Value.ToString();
                                 break;
@@ -11343,9 +12866,16 @@ namespace SmcEslSystem
                         PageList.Add(mPage);
                         Console.WriteLine("BBBBBBBBBB");
                     }
-               //     Console.WriteLine("checkClick"+ checkClick);
-                  if (!checkClick)
+
+                    progressBar1.Maximum = PageList.Count * 10;
+                    //     Console.WriteLine("checkClick"+ checkClick);
+                    if (!checkClick)
                     {
+                        foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                        {
+
+                            kvp.Value.mSmcEsl.stopScanBleDevice();
+                        }
                         listcount = 0;
                         checkClick = true;
                         down = true;
@@ -11354,6 +12884,7 @@ namespace SmcEslSystem
                         button2.Enabled = false;
                         button15.Enabled = false;
                         button19.Enabled = false;
+                        ProgressBarVisible(PageList.Count);
                         stopwatch.Reset();
                         stopwatch.Start();
                     }
@@ -11381,10 +12912,6 @@ namespace SmcEslSystem
                         {
                             newAPList = RunAPList.Except(OldRunAPList).ToList();
                         Console.WriteLine("我們不一樣"+ newAPList);
-                        ProgressBarVisible(PageList.Count);
-                        progressBar1.Value = listcount;
-
-
 
                         for (int a = 0; a < newAPList.Count; a++)
                         {
@@ -11401,8 +12928,8 @@ namespace SmcEslSystem
                                         {
 
 
-                                            int Blcount = mPage1.BleAddress.Length;
-                                            Bitmap bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                                          //  int Blcount = mPage1.BleAddress.Length;
+                                          //  Bitmap bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
                                             /*  Bitmap bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
                                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
                                                          mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);*/
@@ -11411,15 +12938,25 @@ namespace SmcEslSystem
                                             dataGridView1.Rows[numVal].Cells[0].Selected = true;
                                             aaa(datagridview1curr, true, numVal);
                                             dataGridView1.Rows[numVal].Cells[17].Value = DateTime.Now.ToString();
-                                            pictureBoxPage1.Image = bmp;
+                                            //   pictureBoxPage1.Image = bmp;
 
-                                          //  Console.WriteLine("ININ");
-                                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
+                                             Console.WriteLine("ININ"+ mPage1.BleAddress);
+                                            deviceIPData = mPage1.APLink;
+                                          //  ConnectBleTimeOut.Start();
+                                            kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+                                            mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                                            mPage1.TimerConnect.Interval = (20 * 1000);
+                                            mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                                            mPage1.TimerSeconds = new Stopwatch();
+                                            mPage1.TimerSeconds.Start();
+                                            mPage1.TimerConnect.Start();
+                                            //kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.usingAddress);
+                                            // kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                            ///   kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);
                                             //System.Threading.Thread.Sleep(1000);
-                                            EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                                            mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
-                                            pictureBoxPage1.Image = bmp;
+                                            //   EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                                            //  mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3,0);
+                                            //  pictureBoxPage1.Image = bmp;
                                             richTextBox1.Text = richTextBox1.Text + PageList[i].usingAddress + "  嘗試連線中請稍候... \r\n";
                                            // System.Threading.Thread.Sleep(1000);
                                         }
@@ -11594,6 +13131,29 @@ namespace SmcEslSystem
                 }
 
 
+                if (selectSize == "2.13")
+                {
+                    pictureBox1.BackColor = Color.White;
+                    pictureBox1.Size = new Size(212, 104);
+                    pictureBox1.Location = new Point(235, 81);
+                    panel1.Controls.Add(pictureBox1);
+                }
+                else if (selectSize == "2.9")
+                {
+                    pictureBox1.BackColor = Color.White;
+                    pictureBox1.Size = new Size(296, 128);
+                    pictureBox1.Location = new Point(151, 59);
+                    panel1.Controls.Add(pictureBox1);
+                }
+                else if (selectSize == "4.2")
+                {
+                    pictureBox1.BackColor = Color.White;
+                    pictureBox1.Size = new Size(400, 300);
+                    pictureBox1.Location = new Point(88, 5);
+                    panel1.Controls.Add(pictureBox1);
+                }
+
+
                 foreach (DataGridViewRow dr7 in dataGridView7.Rows)
                 {
                     dr7.Selected = false;
@@ -11736,7 +13296,7 @@ namespace SmcEslSystem
                                 Regex NumandEG = new Regex("[^A-Za-z0-9]");
                                 bool type;
                                 string barcodevalue;
-                                PictureBox pictureBox2 = new PictureBox();
+                                pictureboxBarcode pictureBox2 = new pictureboxBarcode();
                                 pictureBox2.Tag = dataGridView.Rows[currentRow].Cells[g].Value.ToString();
                                 //  Console.WriteLine(" pictureBox2.Name" + dataGridView2.Rows[currentRow].Cells[g + 1].Value.ToString());
                                 pictureBox2.Name = dataGridView.Rows[currentRow].Cells[g + 1].Value.ToString();
@@ -11778,14 +13338,16 @@ namespace SmcEslSystem
                                 pictureBox2.Location = new Point(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 g = g + 12;
                                 bar = barcode_w.Write("4253786521345");
+                                pictureBox2.barcodedata = "4253786521345";
                                 pictureBox2.Image = bar;
                                 pictureBox2.MouseDown += new System.Windows.Forms.MouseEventHandler(Label_MouseDown);
                                 pictureBox2.MouseMove += new System.Windows.Forms.MouseEventHandler(picture_MouseMove);
                                 pictureBox2.Click += new System.EventHandler(this.PictureBoxDemo_Click);
+                                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2B_SizeChanged);
                             }
                             else if (dataGridView.Rows[currentRow].Cells[g].Value.ToString() == "Q")
                             {
-                                PictureBox pictureBox2 = new PictureBox();
+                                pictureboxBarcode pictureBox2 = new pictureboxBarcode();
                                 pictureBox2.Tag = dataGridView.Rows[currentRow].Cells[g].Value.ToString();
                                 pictureBox2.Name = dataGridView.Rows[currentRow].Cells[g + 1].Value.ToString();
                                 g = g + 2;
@@ -11814,10 +13376,12 @@ namespace SmcEslSystem
                                 pictureBox2.Location = new Point(Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g].Value), Convert.ToInt32(dataGridView.Rows[currentRow].Cells[g + 1].Value));
                                 g = g + 12;
                                 bqr = qr.Write("http://www.smartchip.com.tw");
+                                pictureBox2.barcodedata = "http://www.smartchip.com.tw";
                                 pictureBox2.Image = bqr;
                                 pictureBox2.MouseDown += new System.Windows.Forms.MouseEventHandler(Label_MouseDown);
                                 pictureBox2.MouseMove += new System.Windows.Forms.MouseEventHandler(picture_MouseMove);
                                 pictureBox2.Click += new System.EventHandler(this.PictureBoxDemo_Click);
+                                pictureBox2.SizeChanged += new System.EventHandler(this.pictureBox2Q_SizeChanged);
                             }
                             picturelabel++;
                         }
@@ -12015,10 +13579,13 @@ namespace SmcEslSystem
                 {
                     if (!ESLStyleDataChange && !ESLSaleStyleDataChange)
                     {
+
+                            Console.WriteLine("ESLSAVE1");
                     }
                     else if (ESLStyleDataChange && !ESLSaleStyleDataChange)
                     {
-                        if (dr.Cells[15].Value.ToString() == "X")
+                            Console.WriteLine("ESLSAVE2");
+                            if (dr.Cells[15].Value.ToString() == "X")
                         {
                             Page1 mPage = new Page1();
                             dr.Selected = false;
@@ -12184,7 +13751,8 @@ namespace SmcEslSystem
                     }
                     else if (!ESLStyleDataChange && ESLSaleStyleDataChange)
                     {
-                        if (dr.Cells[15].Value.ToString() == "V")
+                            Console.WriteLine("ESLSAVE3");
+                            if (dr.Cells[15].Value.ToString() == "V")
                         {
                             Page1 mPage = new Page1();
                             dr.Selected = false;
@@ -12350,7 +13918,8 @@ namespace SmcEslSystem
                     }
                     else
                     {
-                        if (dr.Cells[15].Value.ToString() == "V"|| dr.Cells[15].Value.ToString() == "X")
+                            Console.WriteLine("ESLSAVE4");
+                            if (dr.Cells[15].Value.ToString() == "V"|| dr.Cells[15].Value.ToString() == "X")
                         {
                             Page1 mPage = new Page1();
                             dr.Selected = false;
@@ -12616,11 +14185,18 @@ namespace SmcEslSystem
 
                 if (PageList.Count > 0)
                         {
-                        EslStyleChangeUpdate = true;
+
+                    foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                    {
+
+                        kvp.Value.mSmcEsl.stopScanBleDevice();
+                    }
+                    EslStyleChangeUpdate = true;
                         int tt = 0;
                         testest = true;
                         onlockedbutton(testest);
                         List<string> RunAPList = new List<string>();
+                        ProgressBarVisible(PageList.Count);
                         List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).ToList();
                         foreach (Page1 p in list)
                         {
@@ -12670,14 +14246,22 @@ namespace SmcEslSystem
                                     pictureBoxPage1.Image = bmp;
 
                                     Console.WriteLine("ININ");
-                                    kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                    kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress);
-                                    //System.Threading.Thread.Sleep(1000);
-                                    EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                                    mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3);
-                                    pictureBoxPage1.Image = bmp;
-                                    richTextBox1.Text = richTextBox1.Text + PageList[i].usingAddress + "  嘗試連線中請稍候... \r\n";
-                                    System.Threading.Thread.Sleep(1000);
+                                        deviceIPData = mPage1.APLink;
+                                       //  ConnectBleTimeOut.Start();
+                                       
+                                        // kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                        //   kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);
+                                        //System.Threading.Thread.Sleep(1000);
+                                        //      EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                                        //    mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3,0);
+                                        mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                                        mPage1.TimerConnect.Interval = (20 * 1000);
+                                        mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                                        mPage1.TimerSeconds = new Stopwatch();
+                                        mPage1.TimerSeconds.Start();
+                                        mPage1.TimerConnect.Start();
+                                        kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+                                        richTextBox1.Text = richTextBox1.Text + PageList[i].usingAddress + "  嘗試連線中請稍候... \r\n";
                                 }
                             }
                             break;
@@ -12688,7 +14272,6 @@ namespace SmcEslSystem
                 //  mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
                 macaddress = PageList[listcount].BleAddress;
                 // richTextBox1.Text = mPage1.BleAddress + "  嘗試連線中請稍候... \r\n";
-                ProgressBarVisible(PageList.Count);
 
                 }
             }
@@ -12936,19 +14519,43 @@ namespace SmcEslSystem
                 if (ESLStyleCover)
                 {
                     Console.WriteLine("ESLStyleCover");
-                    mExcelData.ESLStyleCover(label1.Text, pictureBox1, excel, excelwb, mySheet);
+                    int size = 0;
+                    if (pictureBox1.Height == 104)
+                        size = 0;
+                    else if (pictureBox1.Height == 128)
+                        size = 1;
+                    else if (pictureBox1.Height == 300)
+                        size = 2;
+                    mExcelData.ESLStyleCover(label1.Text, pictureBox1, excel, excelwb, mySheet,size);
                 }
                 else
                 {
                     if (ESLStyleSave)
                     {
                         Console.WriteLine("ESLStyleSave1");
-                        mExcelData.dataGridView2Update(dataGridView2, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 0);
+                        int size = 0;
+                        if (pictureBox1.Height == 104)
+                            size = 0;
+                        else if (pictureBox1.Height == 128)
+                            size = 1;
+                        else if (pictureBox1.Height == 300)
+                            size = 2;
+
+
+                        mExcelData.dataGridView2Update(dataGridView2, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 0,size);
                     }
                     if (ESLSaleStyleSave)
                     {
                         Console.WriteLine("ESLStyleSave2");
-                        mExcelData.dataGridView2Update(dataGridView7, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 1);
+                        int size = 0;
+                        if (pictureBox1.Height == 104)
+                            size = 0;
+                        else if (pictureBox1.Height == 128)
+                            size = 1;
+                        else if (pictureBox1.Height == 300)
+                            size = 2;
+
+                        mExcelData.dataGridView2Update(dataGridView7, label1.Text, filename, pictureBox1, excel, excelwb, mySheet, 1,size);
                     }
                 }
 
@@ -13368,51 +14975,56 @@ namespace SmcEslSystem
                 return;
             }
 
+
+
+
             if (!testest)
             {
                 int relrowno = 0;
                 string pp = "";
                 List<DataGridViewRow> toDelete = new List<DataGridViewRow>();
                 List<int> deldataview4no = new List<int>();
+
                 foreach (DataGridViewRow dr in this.dataGridView5.Rows)
                 {
                     if (dr.Cells[0].Value != null && dr.Cells[0].Value.ToString() == "True")
                     {
 
+                        deldataview4no.Add(dr.Cells[0].RowIndex + 2 - relrowno);
+                        relrowno++;
+                        toDelete.Add(dr);
                     }
                 }
 
-
-                DialogResult result = MessageBox.Show("該欄位是否刪除?", "Confirmation", MessageBoxButtons.YesNoCancel);
-                if (result == DialogResult.Yes)
+                if (deldataview4no != null)
                 {
-                    foreach (DataGridViewRow dr in this.dataGridView5.Rows)
+                    DialogResult result = MessageBox.Show("該欄位是否刪除?", "刪除", MessageBoxButtons.YesNo);
+                    if (result == DialogResult.Yes)
                     {
-                        if (dr.Cells[0].Value != null && dr.Cells[0].Value.ToString() == "True")
+
+
+
+                        foreach (DataGridViewRow row in toDelete)
                         {
 
-                            deldataview4no.Add(dr.Cells[0].RowIndex + 2 - relrowno);
-                            relrowno++;
-                            toDelete.Add(dr);
+                            /* foreach (DataGridViewRow dr1 in this.dataGridView1.Rows)
+                             {
+                                 if (row.Cells[1].Value == dr1.Cells[2].Value) {
+
+                                 }
+                             }*/
+
+                            dataGridView5.Rows.Remove(row);
+                            CountESLAll.Text = (Convert.ToInt32(CountESLAll.Text) - 1).ToString();
                         }
+                        mExcelData.dataviewdel(dataGridView5, deldataview4no, "工作表4", openExcelAddress, excel, excelwb, mySheet);
+
                     }
-
-
-                    foreach (DataGridViewRow row in toDelete)
-                    {
-
-                        /* foreach (DataGridViewRow dr1 in this.dataGridView1.Rows)
-                         {
-                             if (row.Cells[1].Value == dr1.Cells[2].Value) {
-
-                             }
-                         }*/
-
-                        dataGridView5.Rows.Remove(row);
-                        CountESLAll.Text = (Convert.ToInt32(CountESLAll.Text) - 1).ToString();
-                    }
-                    mExcelData.dataviewdel(dataGridView5, deldataview4no, "工作表4", openExcelAddress, excel, excelwb, mySheet);
-
+                }
+                else
+                {
+                    MessageBox.Show("未選取選項", "刪除");
+                    
                 }
             }
         }
@@ -13524,8 +15136,6 @@ namespace SmcEslSystem
                         newAPList = RunAPList.Except(OldRunAPList).ToList();
                         Console.WriteLine("我們不一樣" + newAPList);
 
-                        ProgressBarVisible(PageList.Count);
-                        progressBar1.Value = listcount;
 
                         for (int a = 0; a < newAPList.Count; a++)
                         {
@@ -13570,10 +15180,10 @@ namespace SmcEslSystem
 
                                             //  Console.WriteLine("ININ");
                                             kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress);
+                                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);
                                             //System.Threading.Thread.Sleep(1000);
                                             EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
-                                            mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3);
+                                            mSmcEsl.UpdataESLDataFromBuffer(mPage1.BleAddress, 0, 3,0);
                                             pictureBoxPage1.Image = bmp;
                                             richTextBox1.Text = richTextBox1.Text + PageList[i].usingAddress + "  嘗試連線中請稍候... \r\n";
                                             System.Threading.Thread.Sleep(1000);
@@ -13739,6 +15349,7 @@ namespace SmcEslSystem
                     {
                         dr.Cells[0].Value = true;
                         dr.DefaultCellStyle.ForeColor = Color.Black;
+                        dr.ReadOnly = false;
                     }
                 }
             }
@@ -13754,9 +15365,9 @@ namespace SmcEslSystem
                     button2.Enabled = false;
                 }
             }
-            
 
-           testest = false;
+           
+            testest = false;
             onlockedbutton(testest);
             checkClick = false;
             down = false;
@@ -14096,10 +15707,17 @@ namespace SmcEslSystem
                                             dataGridView1.Rows[numVal].Cells[17].Value = DateTime.Now.ToString();
                                             mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, numVal, false, openExcelAddress, excel, excelwb, mySheet);
                                             pictureBoxPage1.Image = bmp;
+                                            mPage1.TimerConnect = new System.Windows.Forms.Timer();
+                                            mPage1.TimerConnect.Interval = (20 * 1000);
+                                            mPage1.TimerConnect.Tick += new EventHandler(ConnectBle_TimeOut);
+                                            mPage1.TimerSeconds = new Stopwatch();
+                                            mPage1.TimerSeconds.Start();
+                                            mPage1.TimerConnect.Start();
 
-                                            Console.WriteLine("ININ");
-                                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
-                                            kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress);
+                                            kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+                                            /*   Console.WriteLine("ININ");
+                                               kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                               kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress,0);*/
                                             //  System.Threading.Thread.Sleep(100);
                                             //      SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
                                             //    mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
@@ -14180,7 +15798,1443 @@ namespace SmcEslSystem
         {
             Console.WriteLine("e.ColumnIndexerror" + e.ColumnIndex);
         }
+
+        private void dataGridView1_ColumnAdded(object sender, DataGridViewColumnEventArgs e)
+        {
+            e.Column.SortMode = DataGridViewColumnSortMode.NotSortable;
+        }
+
+        private void beacon_data_set(List<string> sss,string beaconStime, string beaconEtime,string product_onsale)
+        {
+            try {
+
+                var request = (HttpWebRequest)WebRequest.Create("https://api.ihoin.com/esl_test/esl_beacon_set");
+
+                /*string json = "{\"user\":\"test\"," +
+                     "\"password\":\"bla\"}";*/
+                // var postData = "productarr="+ sss;
+                /* var postData = "productStime="+ beaconStime;
+                 postData += "&productEtime="+ beaconEtime;
+                 postData += "&product_onsale="+ product_onsale;*/
+
+                ServicePointManager.ServerCertificateValidationCallback = new System.Net.Security.RemoteCertificateValidationCallback(AcceptAllCertifications);
+
+                string postData = new JavaScriptSerializer().Serialize(new
+                {
+                    productarr = sss,
+                    productStime = beaconStime,
+                    productEtime = beaconEtime,
+                    product_onsale = product_onsale
+                });
+                Console.WriteLine("postData" + postData);
+                var data = Encoding.ASCII.GetBytes(postData);
+                Console.WriteLine("data" + data);
+                request.Method = "POST";
+                request.ContentType = "application/json";
+                request.ContentLength = data.Length;
+
+                using (var stream = request.GetRequestStream())
+                {
+                    stream.Write(data, 0, data.Length);
+                }
+
+                var response = (HttpWebResponse)request.GetResponse();
+
+                var responseString = new StreamReader(response.GetResponseStream()).ReadToEnd();
+            } catch (Exception ex) {
+                MessageBox.Show(ex.ToString(), "error", MessageBoxButtons.OK);
+            }
+ 
+        }
+
+        public bool AcceptAllCertifications(object sender, System.Security.Cryptography.X509Certificates.X509Certificate certification, System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors sslPolicyErrors)
+        {
+            return true;
+        }
+
+
+        private void button7_Click_1(object sender, EventArgs e)
+        {
+            dataGridView1.Enabled = true;
+        }
+        private void writeESLdataBySzie(string deviceIP,string EslSize,bool writeType) {
+
+            Page1 mPage1 = new Page1();
+            Console.WriteLine("writeType" + writeType);
+            for (int i = 0; i < PageList.Count; i++)
+            {
+                if ((PageList[i].APLink + ":1200") == deviceIP && PageList[i].UpdateState == null)
+                {
+                    Console.WriteLine("aadddss" + PageList[i].APLink);
+                    mPage1 = PageList[i];
+                    break;
+                }
+                if (i == PageList.Count - 1)
+                {
+                    List<Page1> list = PageList.GroupBy(a => a.APLink).Select(g => g.First()).Where(p => p.UpdateState == null).ToList();
+                    foreach (Page1 p in list)
+                    {
+                        OldRunAPList.Add(p.APLink);
+
+                    }
+                }
+
+            }
+            Bitmap bmp;
+            if (mPage1.actionName == "down" || mPage1.actionName == "sale" || mPage1.actionName == "reset" || mPage1.actionName == "EslStyleChangeUpdate")
+            {
+
+
+
+                //dr.Cells[17].Value = DateTime.Now.ToString();
+                macaddress = mPage1.usingAddress;
+                Console.WriteLine("WWWWWWTTTFFFFFFFFFBBBCCC");
+                if (mPage1.actionName == "reset")
+                {
+                    foreach (DataGridViewRow dr in this.dataGridView4.Rows)
+                    {
+                        if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.usingAddress)
+                        {
+                            dataGridView4.Rows[dr.Index].Cells[0].Selected = true;
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                    {
+                        if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.usingAddress)
+                        {
+                            dataGridView1.Rows[dr.Index].Cells[0].Selected = true;
+                        }
+                    }
+                }
+
+
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+                    Console.WriteLine("mPage1.APLink" + mPage1.APLink);
+                    if (kvp.Key.Contains(mPage1.APLink))
+                    {
+                        Console.WriteLine("ININ");
+                        if (mPage1.actionName == "down")
+                        {
+                            Console.WriteLine("d");
+
+                            mPage1.ESLSize = EslSize;
+                            if (EslSize == "01")
+                                bmp = mElectronicPriceData.setESLimage_29(mPage1.usingAddress, "3.04");
+                            else if (EslSize == "02")
+                                bmp = mElectronicPriceData.setESLimage_42(mPage1.usingAddress, "3.04");
+                            else
+                                bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            pictureBoxPage1.Image = bmp;
+                        }
+                        /*     if (immediateUpdate)
+                             {
+                                 Console.WriteLine("d");
+                                 if (mPage1.onsale == "V")
+                                 {
+                                     bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                              mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                                 mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLSaleFormat);
+                                 }
+                                 else
+                                 {
+                                     bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                              mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                                 mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, ESLFormat);
+                                 }
+
+                                 kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                                 pictureBoxPage1.Image = bmp;
+                             }*/
+
+                        if (mPage1.actionName == "reset")
+                        {
+                            Console.WriteLine("r");
+                            //bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                            mPage1.ESLSize = EslSize;
+                            if (EslSize == "01")
+                                bmp = mElectronicPriceData.setESLimage_29(mPage1.usingAddress, "3.04");
+                            else if (EslSize == "02")
+                                bmp = mElectronicPriceData.setESLimage_42(mPage1.usingAddress, "3.04");
+                            else
+                                bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            pictureBoxPage1.Image = bmp;
+                        }
+
+                        if (mPage1.actionName == "sale")
+                        {
+
+                            foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+
+                            Console.WriteLine("s");
+                            if (mPage1.onsale == "V")
+                            {
+
+                                List<string> Format = new List<string>();
+                                if (EslSize == "01")
+                                {
+                                    Format = ESLSale29Format;
+                                }
+                                else if (EslSize == "02")
+                                {
+                                    Format = ESLSale42Format;
+                                }
+                                else
+                                {
+                                    Format = ESLSaleFormat;
+                                }
+                                mPage1.ESLSize = EslSize;
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                            mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                            }
+                            else
+                            {
+
+                                foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                                {
+                                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                    {
+                                        PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                    }
+                                }
+
+                                List<string> Format = new List<string>();
+                                if (EslSize == "01")
+                                {
+                                    Format = ESL29Format;
+                                }
+                                else if (EslSize == "02")
+                                {
+                                    Format = ESL42Format;
+                                }
+                                else
+                                {
+                                    Format = ESLFormat;
+                                }
+                                mPage1.ESLSize = EslSize;
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                            mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                            }
+
+                            kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            pictureBoxPage1.Image = bmp;
+                            //    bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                        }
+                        if (mPage1.actionName == "EslStyleChangeUpdate")
+                        {
+                            Console.WriteLine("s");
+                            if (mPage1.onsale == "V")
+                            {
+                                foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                                {
+                                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                    {
+                                        PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                    }
+                                }
+
+                                List<string> Format = new List<string>();
+                                if (EslSize == "01")
+                                {
+                                    Format = ESLSale29Format;
+                                }
+                                else if (EslSize == "02")
+                                {
+                                    Format = ESLSale42Format;
+                                }
+                                else
+                                {
+                                    Format = ESLSaleFormat;
+                                }
+                                mPage1.ESLSize = EslSize;
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                        mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                           mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                                kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            }
+                            else
+                            {
+                                foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                                {
+                                    if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                    {
+                                        PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                    }
+                                }
+
+                                List<string> Format = new List<string>();
+                                if (EslSize == "01")
+                                {
+                                    Format = ESL29Format;
+                                }
+                                else if (EslSize == "02")
+                                {
+                                    Format = ESL42Format;
+                                }
+                                else
+                                {
+                                    Format = ESLFormat;
+                                }
+                                mPage1.ESLSize = EslSize;
+                                bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                       mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                          mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                                kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                            }
+
+                            pictureBoxPage1.Image = bmp;
+                            //    bmp = mElectronicPriceData.writeIDimage(mPage1.usingAddress);
+                        }
+
+
+                        dataGridView1.Rows[Convert.ToInt32(mPage1.no) - 1].Cells[17].Value = DateTime.Now.ToString();
+                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
+                        //kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                        //  kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress, 0);
+                       if(writeType)
+                            kvp.Value.mSmcEsl.WriteESLDataWithBle2("FFFFFFFF");
+                       else
+                            kvp.Value.mSmcEsl.WriteESLDataWithBle();
+                        //.Threading.Thread.Sleep(1000);
+                        EslUdpTest.SmcEsl mSmcEsl = kvp.Value.mSmcEsl;
+                        //  mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
+                        //   System.Threading.Thread.Sleep(200);
+                        //   Console.WriteLine("WWWWWWWWWWWWWWWWWWWWWWWTTTTTTTTT1");
+                    }
+                }
+                //  mSmcEsl.ConnectBleDevice(mPage1.usingAddress);
+                foreach (DataGridViewRow dr in this.dataGridView3.Rows)
+                {
+                    if (macaddress == dr.Cells[0].Value.ToString())
+                    {
+                        dr.Cells[4].Value = "連線中";
+                    }
+                }
+
+                // int CurrentRow = dataGridView1.CurrentRow.Index;
+                // dataGridView1.Rows[CurrentRow].Cells[17].Value = DateTime.Now.ToString();
+                //       richTextBox1.Text = "正連接:" + mPage1.usingAddress + "\r\n" + richTextBox1.Text;
+                // mSmcEsl.WriteESLData(PageList[listcount].usingAddress);
+            }
+            else if (mPage1.actionName == "saletime")
+            {
+                macaddress = mPage1.usingAddress;
+                foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                {
+                    if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.usingAddress)
+                    {
+                        Console.WriteLine("乾 最好進不來");
+                        dataGridView1.Rows[dr.Index].Cells[0].Selected = true;
+
+                    }
+                }
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+
+                    if (kvp.Key.Contains(mPage1.APLink))
+                    {
+
+                        string format = "yyyy/MM/dd HH:mm:ss";
+                        string start = Convert.ToDateTime(mPage1.onSaleTimeS).ToString("yyyy/MM/dd HH:mm:ss");
+                        string end = Convert.ToDateTime(mPage1.onSaleTimeE).ToString("yyyy/MM/dd HH:mm:ss");
+                        DateTime strDate = DateTime.ParseExact(start, format, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
+                        DateTime endDate = DateTime.ParseExact(end, format, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
+                        if (DateTime.Compare(strDate, DateTime.Now) < 0 && DateTime.Compare(endDate, DateTime.Now) > 0)
+                        {
+
+                            foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+
+                            List<string> Format = new List<string>();
+                            if (EslSize == "01")
+                            {
+                                Format = ESLSale29Format;
+                            }
+                            else if (EslSize == "02")
+                            {
+                                Format = ESLSale42Format;
+                            }
+                            else
+                            {
+                                Format = ESLSaleFormat;
+                            }
+                            mPage1.ESLSize = EslSize;
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                     mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                        mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                            pictureBoxPage1.Image = bmp;
+
+                            foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                            {
+                                if (dr.Cells[6].Value != null && dr.Cells[6].Value.ToString() == mPage1.product_name)
+                                {
+                                    dr.Cells[15].Value = "V";
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 15, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 19, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 20, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+                            List<string> Format = new List<string>();
+                            if (EslSize == "01")
+                            {
+                                Format = ESL29Format;
+                            }
+                            else if (EslSize == "02")
+                            {
+                                Format = ESL42Format;
+                            }
+                            else
+                            {
+                                Format = ESLFormat;
+                            }
+                            mPage1.ESLSize = EslSize;
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                     mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                        mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                            pictureBoxPage1.Image = bmp;
+                            foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                            {
+                                if (dr.Cells[6].Value != null && dr.Cells[6].Value.ToString() == mPage1.product_name)
+                                {
+                                    dr.Cells[15].Value = "X";
+                                    dr.Cells[19].Value = DBNull.Value;
+                                    dr.Cells[20].Value = DBNull.Value;
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 15, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 19, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 20, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                }
+                            }
+
+                        }
+                        dataGridView1.Rows[Convert.ToInt32(mPage1.no) - 1].Cells[17].Value = DateTime.Now.ToString();
+                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
+                        kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                        // kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.usingAddress, 0);
+                        if (writeType)
+                            kvp.Value.mSmcEsl.WriteESLDataWithBle2("FFFFFFFF");
+                        else
+                            kvp.Value.mSmcEsl.WriteESLDataWithBle();
+                        //  mSmcEsl.UpdataESLDataFromBuffer(mPage1.usingAddress, 0, 3);
+                        //  Console.WriteLine("WWWWWWWWWWWWWWWWWWWWWWWTTTTTTTTT2");
+                        // System.Threading.Thread.Sleep(200);
+
+                    }
+                }
+
+            }
+
+            else
+            {
+
+                macaddress = mPage1.BleAddress;
+                foreach (DataGridViewRow dr in this.dataGridView1.Rows)
+                {
+                    if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == mPage1.BleAddress)
+                    {
+                        dataGridView1.Rows[dr.Index].Cells[0].Selected = true;
+                    }
+                }
+                Console.WriteLine("ReadType_mPage1.APLink:" + mPage1.APLink);
+                foreach (KeyValuePair<string, EslObject> kvp in mDictSocket)
+                {
+
+                    if (kvp.Key.Contains(mPage1.APLink))
+                    {
+                        if (mPage1.onsale == "V")
+                        {
+                            foreach (DataGridViewRow dr in this.dataGridView7.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+
+                            List<string> Format = new List<string>();
+                            if (EslSize == "01")
+                            {
+                                Format = ESLSale29Format;
+                            }
+                            else if (EslSize == "02")
+                            {
+                                Format = ESLSale42Format;
+                            }
+                            else
+                            {
+                                Format = ESLSaleFormat;
+                            }
+                            mPage1.ESLSize = EslSize;
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                         mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                            mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                        }
+                        else
+                        {
+
+                            foreach (DataGridViewRow dr in this.dataGridView2.Rows)
+                            {
+                                if (dr.Cells[2].Value != null && dr.Cells[2].Value.ToString() == "V" && dr.Cells[4].Value != null && ("0" + dr.Cells[4].Value.ToString()) == EslSize)
+                                {
+                                    PageList[listcount].ProductStyle = dr.Cells[1].Value.ToString();
+                                }
+                            }
+                            List<string> Format = new List<string>();
+                            if (EslSize == "01")
+                            {
+                                Format = ESL29Format;
+                            }
+                            else if (EslSize == "02")
+                            {
+                                Format = ESL42Format;
+                            }
+                            else
+                            {
+                                Format = ESLFormat;
+                            }
+                            mPage1.ESLSize = EslSize;
+                            bmp = mElectronicPriceData.setPage1("Calibri", mPage1.product_name, mPage1.Brand,
+                                          mPage1.specification, mPage1.price, mPage1.Special_offer,
+                                             mPage1.barcode, mPage1.Web, mPage1.usingAddress, mPage1.HeadertextALL, Format);
+                        }
+
+                        dataGridView1.Rows[Convert.ToInt32(mPage1.no) - 1].Cells[17].Value = DateTime.Now.ToString();
+                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 17, Convert.ToInt32(mPage1.no) - 1, false, openExcelAddress, excel, excelwb, mySheet);
+                        kvp.Value.mSmcEsl.TransformImageToData(bmp);
+                        if (writeType)
+                            kvp.Value.mSmcEsl.WriteESLDataWithBle2("FFFFFFFF");
+                        else
+                            kvp.Value.mSmcEsl.WriteESLDataWithBle();
+                        // kvp.Value.mSmcEsl.writeESLDataBuffer(mPage1.BleAddress,0);
+                        //  kvp.Value.mSmcEsl.ConnectBleDevice(mPage1.BleAddress);
+
+                    }
+                }
+            }
+        }
+
+
+        private   string writeESLsuccess(string deviceIP,string str_data)
+        {
+            BleWriteTimer.Stop();
+            str_data = "全部資料寫入完成";
+            //   this.progressBar1.Visible = false; //顯示進度條
+
+            //   stopwatch.Stop();//碼錶停止
+            //   TimeSpan ts = stopwatch.Elapsed;
+
+            // Format and display the TimeSpan value.
+            //   string elapsedTime = String.Format("{0:00} 分 {1:00} 秒 {2:000} 毫秒", ts.Minutes, ts.Seconds, ts.Milliseconds);
+
+            //ConnectBleTimeOut.Stop();
+            //str_data = "AP 更新 ESL 完成";
+            updateESLper.Text = (Convert.ToUInt32(updateESLper.Text) + 1).ToString();
+            //  richTextBox1.Text = "斷線成功" + macaddress + "\r\n" + richTextBox1.Text;
+            Console.WriteLine("writeESLsuccess:" + progressBar1.Maximum);
+            progressBar1.Value += progressBar1.Step;
+            Console.WriteLine("AP 更新 PageList.Count" + PageList.Count);
+            for (int i = 0; i < PageList.Count; i++)
+            {
+                //  Console.WriteLine(i+"AP 更新 ESL" + PageList[i].usingAddress + deviceIP);
+                if (PageList[i].APLink + ":1200" == deviceIP && PageList[i].UpdateState == null)
+                {
+                    str_data = "AP 更新" + PageList[i].usingAddress + "完成";
+                    Console.WriteLine(i + "AP 更新 ESL" + PageList[i].usingAddress + deviceIP);
+                    if (PageList[i].actionName == "reset")// 地3業還原
+                    {
+                        PageList[i].UpdateState = "更新成功";
+                        PageList[i].UpdateTime = DateTime.Now.ToString();
+                        foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                        {
+                            //    Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + macaddress);
+                            if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                            {
+                                //  Console.WriteLine("ININJ");
+                                dr4.Cells[2].Value = DateTime.Now.ToString();
+                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                dr4.Cells[2].Style.BackColor = Color.Green;
+                                dataGridView4.Rows[dr4.Index].Cells[0].Selected = false;
+                                dr4.Cells[0].Value = false;
+                                dr4.Cells[3].Value = "";
+                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                dr4.Cells[6].Value = "未绑定";
+                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                //    dr4.Cells[6].Value = dr.Cells[6].Value;
+                                break;
+                            }
+                        }
+
+                        foreach (DataGridViewRow dr in dataGridView1.Rows)
+                        {
+
+                            if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() != "")
+                            {
+                                if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                {
+                                    Console.WriteLine("=========================");
+                                    if (dr.Cells[1].Value.ToString().Contains(',' + PageList[i].usingAddress))
+                                    {
+                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(',' + PageList[i].usingAddress);
+                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 13);
+                                        dr.Cells[12].Value = dr.Cells[1].Value;
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    }
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress + ','))
+                                    {
+
+                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(PageList[i].usingAddress + ',');
+                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 13);
+                                        dr.Cells[12].Value = dr.Cells[1].Value;
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    }
+
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                    {
+
+                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(PageList[i].usingAddress);
+                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 12);
+                                        dr.Cells[12].Value = dr.Cells[1].Value;
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    }
+
+                                    if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == "")
+                                    {
+                                        MessageBox.Show(dr.Cells[6].Value.ToString() + "無綁定ESL自動下架");
+                                        dr.Cells[0].ReadOnly = true;
+                                        dr.Cells[0].Value = false;
+                                        dr.Cells[13].Value = "";
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        dr.DefaultCellStyle.ForeColor = Color.Gray;
+                                    }
+                                    break;
+                                }
+                            }
+                            Console.WriteLine("=OOOOOOOOOO===");
+                        }
+                    }
+                    else
+                    {//第一頁功能
+
+                        PageList[i].UpdateState = "更新成功";
+                        PageList[i].UpdateTime = DateTime.Now.ToString();
+                        List<string> nullbeacon = new List<string>();
+                        foreach (DataGridViewRow dr in dataGridView1.Rows)
+                        {
+
+                            // Console.WriteLine("dr.Cells[1].Value.ToString()");
+                            if (PageList[i].actionName == "down" || PageList[i].actionName == "sale" || PageList[i].actionName == "saletime" || PageList[i].actionName == "EslStyleChangeUpdate")
+                            {
+
+
+
+                                if (dr.Cells[1].Value != null)
+                                {
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                    {
+                                        //// Console.WriteLine("macaddress" + macaddress);
+                                        // dr.Cells[4].Style.BackColor = Color.Green;
+                                        //  dr.Cells[4].Value = DateTime.Now.ToString();
+                                        // Console.WriteLine("macaddress" + dr.Cells[6].Value);
+                                        // dr.Cells[18].Value = DateTime.Now.ToString();
+
+                                        dr.Cells[4].Style.BackColor = Color.Green;
+                                        dr.Cells[4].Value = DateTime.Now.ToString();
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 4, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+
+                                        /* PageList[i].UpdateState = "更新成功";
+                                         PageList[i].UpdateTime = DateTime.Now.ToString();*/
+                                        dataGridView1.Rows[dr.Index].Cells[0].Selected = false;
+                                        Page1 mPage1 = PageList[i];
+                                        if (PageList[i].actionName == "down")
+                                        {
+
+                                            foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                            {
+                                                //  Console.WriteLine(dr4.Cells[1].Value.ToString()+"jjjjjjj" + PageList[i].usingAddress);
+                                                if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString() == PageList[i].usingAddress)
+                                                {
+                                                    //Console.WriteLine("ININJ");
+                                                    dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[2].Style.BackColor = Color.Green;
+                                                    dataGridView4.Rows[dr4.Index].Cells[0].Selected = false;
+                                                    dr4.Cells[0].Value = false;
+                                                    dr4.Cells[3].Value = "";
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[6].Value = "未綁定";
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    //    dr4.Cells[6].Value = dr.Cells[6].Value;
+                                                    break;
+                                                }
+                                            }
+
+
+
+
+                                            if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() != "")
+                                            {
+                                                if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                                {
+                                                    Console.WriteLine(PageList[i].usingAddress + "=========================" + dr.Cells[1].Value.ToString());
+                                                    if (dr.Cells[1].Value.ToString().Contains(',' + PageList[i].usingAddress))
+                                                    {
+                                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(',' + PageList[i].usingAddress);
+                                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 13);
+                                                        dr.Cells[12].Value = dr.Cells[1].Value;
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    }
+                                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress + ','))
+                                                    {
+
+                                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(PageList[i].usingAddress + ',');
+                                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 13);
+                                                        dr.Cells[12].Value = dr.Cells[1].Value;
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    }
+
+                                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                                    {
+
+                                                        int changeaddr = dr.Cells[1].Value.ToString().IndexOf(PageList[i].usingAddress);
+                                                        dr.Cells[1].Value = dr.Cells[1].Value.ToString().Remove(changeaddr, 12);
+                                                        dr.Cells[12].Value = dr.Cells[1].Value;
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    }
+
+                                                    if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() == "")
+                                                    {
+                                                        dr.Cells[0].ReadOnly = true;
+                                                        dr.Cells[0].Value = false;
+                                                        dr.Cells[2].Value = DBNull.Value;
+                                                        dr.Cells[13].Value = "";
+                                                        dr.Cells[19].Value = DBNull.Value;
+                                                        dr.Cells[20].Value = DBNull.Value;
+                                                        dr.Cells[21].Value = DBNull.Value;
+                                                        dr.Cells[22].Value = DBNull.Value;
+                                                        dr.Cells[23].Value = DBNull.Value;
+
+                                                        nullbeacon.Add(dr.Cells[5].Value.ToString());
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 19, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 20, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 21, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 22, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 23, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                        dr.DefaultCellStyle.ForeColor = Color.Gray;
+                                                    }
+
+                                                }
+                                            }
+
+                                            // dr.DefaultCellStyle.ForeColor = Color.Gray;
+                                            dr.Cells[15].Value = "X";
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 15, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            dr.Cells[16].Value = "X";
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 16, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            // dr.Cells[1].Value = "";
+                                            //  mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            dr.Cells[18].Value = DateTime.Now.ToString();
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            dr.Cells[13].Value = "";
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            // dr.Cells[12].Value = "";
+                                            //  mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            // dr.Cells[0].ReadOnly = true;
+                                            //dr.Cells[0].Value = false;
+
+                                        }
+
+                                        /*   if (immediateUpdate)
+                                           {
+                                               dr.Cells[13].Value = PageList[i].ProductStyle;
+                                               Console.WriteLine(PageList[i].product_name + "PageList[i].ProductStyle" + PageList[i].ProductStyle);
+                                               mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                               productState(dr);
+                                               dr.Cells[18].Value = DateTime.Now.ToString();
+                                               mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+
+                                               foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                               {
+                                                   Console.WriteLine(dr4.Cells[1].Value.ToString() + "jjjjjjj" + PageList[i].usingAddress);
+                                                   if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString() == PageList[i].usingAddress)
+                                                   {
+                                                       Console.WriteLine("ININJ");
+                                                       dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                       mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                       dr4.Cells[2].Style.BackColor = Color.Green;
+                                                       dr4.Cells[3].Value = dr.Cells[13].Value;
+                                                       mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                       dr4.Cells[6].Value = dr.Cells[6].Value;
+                                                       mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                       break;
+                                                   }
+                                               }
+
+                                           }*/
+
+                                      
+                                        if (PageList[i].actionName == "sale")
+                                        {
+
+
+                                            string ESLStyle = "";
+
+                                            if (PageList[i].onsale == "V")
+                                            {
+                                                foreach (DataGridViewRow dr7 in dataGridView7.Rows)
+                                                {
+                                                    if (PageList[i].ESLSize == "01" && dr7.Cells[4].Value.ToString() == "1" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "02" && dr7.Cells[4].Value.ToString() == "2" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "00" && dr7.Cells[4].Value.ToString() == "0" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                }
+                                            }
+                                            else
+                                            {
+                                                foreach (DataGridViewRow dr2 in dataGridView2.Rows)
+                                                {
+                                                    if (PageList[i].ESLSize == "01" && dr2.Cells[4].Value.ToString() == "1" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "02" && dr2.Cells[4].Value.ToString() == "2" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "00" && dr2.Cells[4].Value.ToString() == "0" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                }
+                                            }
+                                                dr.Cells[13].Value = ESLStyle;
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 5, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 6, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 7, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 8, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 9, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 10, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 11, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            dr.Cells[18].Value = DateTime.Now.ToString();
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+
+                                            dr.Cells[5].Style.ForeColor = Color.Empty;
+                                            dr.Cells[6].Style.ForeColor = Color.Empty;
+                                            dr.Cells[7].Style.ForeColor = Color.Empty;
+                                            dr.Cells[8].Style.ForeColor = Color.Empty;
+                                            dr.Cells[9].Style.ForeColor = Color.Empty;
+                                            dr.Cells[10].Style.ForeColor = Color.Empty;
+                                            dr.Cells[11].Style.ForeColor = Color.Empty;
+                                            dr.DefaultCellStyle.ForeColor = Color.Black;
+                                            foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                            {
+                                                // Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
+                                                if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                                {
+                                                    Console.WriteLine("ININJ");
+                                                    dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[2].Style.BackColor = Color.Green;
+                                                    dr4.Cells[3].Value = ESLStyle;
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[6].Value = dr.Cells[6].Value;
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    break;
+                                                }
+                                            }
+
+                                        }
+
+                                        if (PageList[i].actionName == "saletime")
+                                        {
+                                            string ESLStyle = "";
+                                            if (PageList[i].onsale == "V")
+                                            {
+                                                foreach (DataGridViewRow dr7 in dataGridView7.Rows)
+                                                {
+                                                    if (PageList[i].ESLSize == "01" && dr7.Cells[4].Value.ToString() == "1" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "02" && dr7.Cells[4].Value.ToString() == "2" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "00" && dr7.Cells[4].Value.ToString() == "0" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                }
+                                            }
+                                            else
+                                            {
+                                                foreach (DataGridViewRow dr2 in dataGridView2.Rows)
+                                                {
+                                                    if (PageList[i].ESLSize == "01" && dr2.Cells[4].Value.ToString() == "1" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "02" && dr2.Cells[4].Value.ToString() == "2" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "00" && dr2.Cells[4].Value.ToString() == "0" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                }
+                                            }
+                                            dr.Cells[13].Value = ESLStyle;
+                                            Console.WriteLine(PageList[i].product_name + "PageList[i].ProductStyle" + PageList[i].ProductStyle);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            productState(dr);
+                                            dr.Cells[18].Value = DateTime.Now.ToString();
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            dr.Cells[3].Value = false;
+
+
+
+                                            foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                            {
+                                                //    Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
+                                                if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                                {
+                                                    //   Console.WriteLine("ININJ");
+                                                    dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[2].Style.BackColor = Color.Green;
+                                                    dr4.Cells[3].Value = ESLStyle;
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[6].Value = dr.Cells[6].Value;
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if (PageList[i].actionName == "EslStyleChangeUpdate")
+                                        {
+                                            string ESLStyle = "";
+                                                  if (PageList[i].onsale == "V")
+                                            {
+                                                foreach (DataGridViewRow dr7 in dataGridView7.Rows)
+                                                {
+                                                    if (PageList[i].ESLSize == "01" && dr7.Cells[4].Value.ToString() == "1" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "02" && dr7.Cells[4].Value.ToString() == "2" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "00" && dr7.Cells[4].Value.ToString() == "0" && dr7.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr7.Cells[1].Value.ToString();
+                                                    }
+                                                }
+                                            }
+                                            else
+                                            {
+                                                foreach (DataGridViewRow dr2 in dataGridView2.Rows)
+                                                {
+                                                    if (PageList[i].ESLSize == "01" && dr2.Cells[4].Value.ToString() == "1" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "02" && dr2.Cells[4].Value.ToString() == "2" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                    else if (PageList[i].ESLSize == "00" && dr2.Cells[4].Value.ToString() == "0" && dr2.Cells[2].Value.ToString() == "V")
+                                                    {
+                                                        ESLStyle = dr2.Cells[1].Value.ToString();
+                                                    }
+                                                }
+                                            }
+                                            dr.Cells[13].Value = ESLStyle;
+                                            Console.WriteLine(PageList[i].product_name + "PageList[i].ProductStyle" + PageList[i].ProductStyle);
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            dr.Cells[18].Value = DateTime.Now.ToString();
+                                            mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                            foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                            {
+                                                //   Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
+                                                if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                                {
+                                                    //    Console.WriteLine("ININJ");
+                                                    dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[2].Style.BackColor = Color.Green;
+                                                    dr4.Cells[3].Value = ESLStyle;
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    dr4.Cells[6].Value = dr.Cells[6].Value;
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+
+                                        foreach (DataGridViewRow dr3 in dataGridView3.Rows)
+                                        {
+                                            if (dr3.Cells[0].Value.ToString().Contains(PageList[i].usingAddress))
+                                            {
+                                                dr3.Cells[4].Value = "已完成";
+                                                dr3.Cells[6].Value = DateTime.Now.ToString();
+                                                // UpdateESLDen.Text = (Convert.ToInt32(UpdateESLDen.Text) + 1).ToString();
+                                                break;
+                                            }
+                                        }
+
+                                        /*   foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                           {
+                                               Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].usingAddress);
+                                               if (dr4.Cells[1].Value.ToString().Contains(PageList[i].usingAddress))
+                                               {
+                                                   Console.WriteLine("ININJ");
+                                                   dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                   mExcelData.dataGridViewRowCellUpdate(dataGridView4,2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                   dr4.Cells[2].Style.BackColor = Color.Green;
+                                                   dr4.Cells[3].Value = styleName;
+                                                   mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                   dr4.Cells[6].Value = dr.Cells[6].Value;
+                                                   mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                   break;
+                                               }
+                                           }*/
+                                    }
+                                }
+
+
+
+                            }
+                            else
+                            {
+                                if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString().Contains(PageList[i].BleAddress))
+                                {
+                                    foreach (DataGridViewRow drnew in dataGridView1.Rows)
+                                    {
+                                        if (drnew.Cells[12].Value != null && drnew.Cells[12].Value.ToString() != "")
+                                        {
+                                            if (drnew.Cells[12].Value.ToString().Contains(PageList[i].BleAddress))
+                                            {
+                                                Console.WriteLine("cccccccc" + drnew.Cells[12].Value);
+                                                if (drnew.Cells[12].Value != null)
+                                                    a = drnew.Cells[12].Value;
+                                                if (drnew.Cells[13].Value != null)
+                                                    b = drnew.Cells[13].Value;
+                                                if (drnew.Cells[14].Value != null)
+                                                    c = drnew.Cells[14].Value;
+                                                if (drnew.Cells[15].Value != null)
+                                                    d = drnew.Cells[15].Value;
+                                                easd = drnew.Cells[16].Value;
+                                                //  drnew.Cells[12].Value = DBNull.Value;
+                                                if (drnew.Cells[12].Value.ToString().Contains(',' + PageList[i].usingAddress))
+                                                {
+                                                    int changeaddr = drnew.Cells[12].Value.ToString().IndexOf(',' + PageList[i].usingAddress);
+                                                    drnew.Cells[12].Value = drnew.Cells[12].Value.ToString().Remove(changeaddr, 13);
+
+
+                                                }
+                                                if (drnew.Cells[12].Value.ToString().Contains(PageList[i].usingAddress + ','))
+                                                {
+
+                                                    int changeaddr = drnew.Cells[12].Value.ToString().IndexOf(PageList[i].usingAddress + ',');
+                                                    drnew.Cells[12].Value = drnew.Cells[12].Value.ToString().Remove(changeaddr, 13);
+
+                                                }
+
+                                                if (drnew.Cells[12].Value.ToString().Contains(PageList[i].usingAddress))
+                                                {
+
+                                                    int changeaddr = drnew.Cells[12].Value.ToString().IndexOf(PageList[i].usingAddress);
+                                                    drnew.Cells[12].Value = drnew.Cells[12].Value.ToString().Remove(changeaddr, 12);
+
+                                                }
+                                                if (drnew.Cells[12].Value.ToString().Length == 0)
+                                                {
+                                                    drnew.DefaultCellStyle.ForeColor = Color.Gray;
+                                                    drnew.Cells[0].Value = false;
+                                                    drnew.Cells[0].ReadOnly = true;
+                                                }
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, drnew.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, drnew.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                drnew.Cells[13].Value = DBNull.Value;
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, drnew.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                drnew.Cells[14].Value = DBNull.Value;
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView1, 14, drnew.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                if (drnew.Cells[12].Value != null && drnew.Cells[12].Value.ToString() == "")
+                                                {
+                                                    drnew.Cells[16].Value = "X";
+                                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 16, drnew.Index, false, openExcelAddress, excel, excelwb, mySheet);
+
+                                                    // drnew.Cells[15].Value = "X";
+                                                    //     mExcelData.dataGridViewRowCellUpdate(dataGridView1, 15, drnew.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                }
+                                                break;
+                                            }
+
+                                        }
+
+                                    }
+
+                                    Console.WriteLine("b" + b.ToString());
+                                    Console.WriteLine("c" + c.ToString());
+                                    Console.WriteLine("d" + d.ToString());
+                                    // dr.Cells[12].Value = dr.Cells[1].Value;
+                                    if (dr.Cells[12].Value.ToString().Length > 0)
+                                        dr.Cells[12].Value = dr.Cells[12].Value.ToString() + "," + PageList[i].usingAddress;
+                                    else
+                                        dr.Cells[12].Value = PageList[i].usingAddress;
+
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 1, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 12, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    dr.Cells[13].Value = b;
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    dr.Cells[14].Value = c;
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 14, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    /* if (dr.Cells[12].Value != null && dr.Cells[12].Value.ToString().Length == 12) {
+                                         dr.Cells[15].Value = "X";
+                                         mExcelData.dataGridViewRowCellUpdate(dataGridView1, 15, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                     }*/
+                                    dr.Cells[16].Value = "V";
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 16, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 5, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 6, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 7, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 8, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 9, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 10, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    mExcelData.dataGridViewRowCellUpdate(dataGridView1, 11, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                    dr.DefaultCellStyle.ForeColor = Color.Black;
+                                    dr.Cells[1].Style.ForeColor = Color.Black;
+                                    dr.Cells[0].ReadOnly = false;
+                                    dr.Cells[0].Value = true;
+                                    /*   foreach (DataGridViewRow dr4 in this.dataGridView4.Rows)
+                                       {
+                                           if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString() == dr.Cells[12].Value.ToString())
+                                           {
+                                               dr4.Cells[6].Value = dr.Cells[6].Value;
+                                           }
+                                       }*/
+                                }
+                                if (dr.Cells[1].Value != null && dr.Cells[1].Value.ToString() != "")
+                                {
+                                    Console.WriteLine("macaddressAAS" + dr.Cells[1].Value.ToString());
+                                    if (dr.Cells[1].Value.ToString().Contains(PageList[i].BleAddress))
+                                    {
+                                        Console.WriteLine("TTTTTTTTTTTT" + PageList[i].ESLSize+ " "+ PageList[i].BleAddress+ " "+ PageList[i].onsale);
+                                        string ESLStyle = "";
+                                        if (PageList[i].onsale == "V")
+                                        {
+                                            foreach (DataGridViewRow dr7 in dataGridView7.Rows)
+                                            {
+                                               
+                                                if (PageList[i].ESLSize == "01" && dr7.Cells[4].Value.ToString() == "1" && dr7.Cells[2].Value.ToString() == "V")
+                                                {
+                                                    ESLStyle = dr7.Cells[1].Value.ToString();
+                                                }
+                                                else if (PageList[i].ESLSize == "02" && dr7.Cells[4].Value.ToString() == "2" && dr7.Cells[2].Value.ToString() == "V")
+                                                {
+                                                    ESLStyle = dr7.Cells[1].Value.ToString();
+                                                }
+                                                else if(PageList[i].ESLSize == "00" && dr7.Cells[4].Value.ToString() == "0" && dr7.Cells[2].Value.ToString() == "V")
+                                                {
+                                                    ESLStyle = dr7.Cells[1].Value.ToString();
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            foreach (DataGridViewRow dr2 in dataGridView2.Rows)
+                                            {
+                                                Console.WriteLine(dr2.Cells[4].Value.ToString() + "  "+dr2.Cells[2].Value.ToString());
+                                                if (PageList[i].ESLSize == "01" && dr2.Cells[4].Value.ToString() == "1" && dr2.Cells[2].Value.ToString() == "V")
+                                                {
+                                                    ESLStyle = dr2.Cells[1].Value.ToString();
+                                                }
+                                                else if (PageList[i].ESLSize == "02" && dr2.Cells[4].Value.ToString() == "2" && dr2.Cells[2].Value.ToString() == "V")
+                                                {
+                                                    ESLStyle = dr2.Cells[1].Value.ToString();
+                                                }
+                                                else if (PageList[i].ESLSize == "00" && dr2.Cells[4].Value.ToString() == "0" && dr2.Cells[2].Value.ToString() == "V")
+                                                {
+                                                    ESLStyle = dr2.Cells[1].Value.ToString();
+                                                }
+                                            }
+                                        }
+
+                                        dr.Cells[4].Style.BackColor = Color.Green;
+                                        dr.Cells[4].Value = DateTime.Now.ToString();
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 4, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        dr.Cells[18].Value = DateTime.Now.ToString();
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 18, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        dr.Cells[13].Value = ESLStyle;
+                                        mExcelData.dataGridViewRowCellUpdate(dataGridView1, 13, dr.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                        if (dr.Index % 2 == 1)
+                                        {
+                                            dr.DefaultCellStyle.BackColor = Color.Beige;
+                                        }
+                                        else
+                                        {
+                                            dr.DefaultCellStyle.BackColor = Color.Bisque;
+                                        }
+                                        //  UpdateESLDen.Text = (Convert.ToInt32(UpdateESLDen.Text) + 1).ToString();
+                                        PageList[i].UpdateState = "更新成功";
+                                        PageList[i].UpdateTime = DateTime.Now.ToString();
+                                        foreach (DataGridViewRow dr3 in dataGridView3.Rows)
+                                        {
+                                            if (dr3.Cells[0].Value.ToString().Contains(PageList[i].BleAddress))
+                                            {
+                                                dr3.Cells[4].Value = "已完成";
+                                                dr3.Cells[6].Value = DateTime.Now.ToString();
+                                                /// UpdateESLDen.Text = (Convert.ToInt32(UpdateESLDen.Text) + 1).ToString();
+                                                break;
+                                            }
+                                        }
+
+                                        foreach (DataGridViewRow dr4 in dataGridView4.Rows)
+                                        {
+                                            // Console.WriteLine("jjjjjjj" + dr4.Cells[1].Value.ToString() + PageList[i].BleAddress);
+                                            if (dr4.Cells[1].Value != null && dr4.Cells[1].Value.ToString().Contains(PageList[i].BleAddress))
+                                            {
+                                                // Console.WriteLine("AA" + dr4.Cells[1].Value.ToString());
+                                                dr4.Cells[2].Value = DateTime.Now.ToString();
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 2, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                dr4.Cells[2].Style.BackColor = Color.Green;
+                                                dr4.Cells[3].Value = ESLStyle;
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 3, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                dr4.Cells[6].Value = dr.Cells[6].Value;
+                                                mExcelData.dataGridViewRowCellUpdate(dataGridView4, 6, dr4.Index, false, openExcelAddress, excel, excelwb, mySheet);
+                                                break;
+
+                                            }
+                                        }
+
+                                    }
+
+                                }
+                            }
+
+
+
+                        }
+
+                        if (nullbeacon.Count != 0)
+                            beacon_data_set(nullbeacon, "", "", "");
+
+                    }
+                    deviceIPData = PageList[i].APLink;
+                    // PageList.RemoveAt(i);
+                    Console.WriteLine("aaaaaaa");
+                    break;
+                }
+            }
+
+            return str_data;
+        }
+
+        private void tabControl2_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (tabControl2.SelectedIndex == 1)
+            {
+                for (int i = 0; i < this.dataGridView2.RowCount; i++)
+                {
+                    dataGridView2.CurrentCell = null;
+                    for (int ee = 0; ee < this.dataGridView2.ColumnCount; ee++)
+                    {
+
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView2.Columns[ee].Visible = false;
+                    }
+                    Console.WriteLine("selectChange"+dataGridView2.Rows[i].Cells[3].Value.ToString());
+                    if (dataGridView2.Rows[i].Cells[4].Value.ToString() != "0")
+                    {
+
+                        dataGridView2.Rows[i].Visible = false;
+                    }
+                    else
+                    {
+                        dataGridView2.Rows[i].Visible = true;
+                    }
+                        
+                }
+
+                for (int i = 0; i < this.dataGridView7.RowCount; i++)
+                {
+                    dataGridView7.CurrentCell = null;
+                    for (int ee = 0; ee < this.dataGridView7.ColumnCount; ee++)
+                    {
+
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView7.Columns[ee].Visible = false;
+                    }
+                    if (dataGridView7.Rows[i].Cells[4].Value.ToString() != "0")
+                    {
+
+                        dataGridView7.Rows[i].Visible = false;
+                    }
+                    else
+                    {
+                        dataGridView7.Rows[i].Visible = true;
+                    }
+
+                }
+            }
+            else if (tabControl2.SelectedIndex == 2)
+            {
+                for (int i = 0; i < this.dataGridView2.RowCount; i++)
+                {
+                    dataGridView2.CurrentCell = null;
+                    for (int ee = 0; ee < this.dataGridView2.ColumnCount; ee++)
+                    {
+
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView2.Columns[ee].Visible = false;
+                    }
+                    if (dataGridView2.Rows[i].Cells[4].Value.ToString() != "1")
+                    {
+
+                        dataGridView2.Rows[i].Visible = false;
+                    }
+                    else
+                    {
+                        dataGridView2.Rows[i].Visible = true;
+                    }
+                }
+
+
+                for (int i = 0; i < this.dataGridView7.RowCount; i++)
+                {
+                    dataGridView7.CurrentCell = null;
+                    for (int ee = 0; ee < this.dataGridView7.ColumnCount; ee++)
+                    {
+
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView7.Columns[ee].Visible = false;
+                    }
+                    if (dataGridView7.Rows[i].Cells[4].Value.ToString() != "1")
+                    {
+
+                        dataGridView7.Rows[i].Visible = false;
+                    }
+                    else
+                    {
+                        dataGridView7.Rows[i].Visible = true;
+                    }
+
+                }
+            }
+            else if (tabControl2.SelectedIndex == 3)
+            {
+                for (int i = 0; i < this.dataGridView2.RowCount; i++)
+                {
+                    dataGridView2.CurrentCell = null;
+                    for (int ee = 0; ee < this.dataGridView2.ColumnCount; ee++)
+                    {
+
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView2.Columns[ee].Visible = false;
+                    }
+                    if ( dataGridView2.Rows[i].Cells[4].Value.ToString() != "2")
+                    {
+
+                        dataGridView2.Rows[i].Visible = false;
+                    }
+                    else
+                    {
+                        dataGridView2.Rows[i].Visible = true;
+                    }
+                }
+
+
+                for (int i = 0; i < this.dataGridView7.RowCount; i++)
+                {
+                    dataGridView7.CurrentCell = null;
+                    for (int ee = 0; ee < this.dataGridView7.ColumnCount; ee++)
+                    {
+
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView7.Columns[ee].Visible = false;
+                    }
+                    if (dataGridView7.Rows[i].Cells[4].Value.ToString() != "2")
+                    {
+
+                        dataGridView7.Rows[i].Visible = false;
+                    }
+                    else
+                    {
+                        dataGridView7.Rows[i].Visible = true;
+                    }
+
+                }
+            }
+            else
+            {
+                for (int i = 0; i < this.dataGridView2.RowCount; i++)
+                {
+                    for (int ee = 0; ee < this.dataGridView2.ColumnCount; ee++)
+                    {
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView2.Columns[ee].Visible = false;
+                    }
+                    this.dataGridView2.Rows[i].Visible = true;
+                }
+
+
+                for (int i = 0; i < this.dataGridView7.RowCount; i++)
+                {
+                    for (int ee = 0; ee < this.dataGridView7.ColumnCount; ee++)
+                    {
+                        if (ee != 0 && ee != 1 && ee != 2)
+                            this.dataGridView7.Columns[ee].Visible = false;
+                    }
+                    this.dataGridView7.Rows[i].Visible = true;
+                }
+            }
+        }
     }
 }
-
-

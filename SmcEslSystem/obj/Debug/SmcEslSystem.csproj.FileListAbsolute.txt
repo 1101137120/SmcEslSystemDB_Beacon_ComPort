@@ -118,3 +118,20 @@ C:\Users\abby\Desktop\新增資料夾 (4)\SmcEslSystem - libV5 180126screen - �
 C:\Users\abby\Desktop\新增資料夾 (4)\SmcEslSystem - libV5 180126screen - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.Form2.resources
 C:\Users\abby\Desktop\新增資料夾 (4)\SmcEslSystem - libV5 180126screen - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.Properties.Resources.resources
 C:\Users\abby\Desktop\新增資料夾 (4)\SmcEslSystem - libV5 180126screen - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.csproj.GenerateResource.Cache
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\`.exe.config
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.csproj.ResolveComReference.cache
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.csprojResolveAssemblyReference.cache
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.Form1.resources
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.Form2.resources
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.TransparentPanel.resources
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.csproj.GenerateResource.Cache
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\`.exe
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\`.pdb
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\ClassLibrary3.dll
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\SmcEslLib.dll
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\zxing.dll
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\zxing.presentation.dll
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\bin\Debug\ClassLibrary3.pdb
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\SmcEslSystem.Properties.Resources.resources
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\`.exe
+C:\Users\abby\Desktop\ESL\SmcEslSystem - libV6 180313tr_Form2 - 複製\SmcEslSystem\obj\Debug\`.pdb

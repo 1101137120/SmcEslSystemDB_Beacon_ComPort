@@ -872,7 +872,7 @@ namespace SmcEslSystem
             return true;
         }
 
-        public bool dataGridView2Update(DataGridView dataGrid,string styleName,string fileName,PictureBox pictureBox1, Excel.Application excel, Excel.Workbook excelwb, Excel.Worksheet mySheet,int ESLStyleNumber) {
+        public bool dataGridView2Update(DataGridView dataGrid,string styleName,string fileName,PictureBox pictureBox1, Excel.Application excel, Excel.Workbook excelwb, Excel.Worksheet mySheet,int ESLStyleNumber,int size) {
            // Excel.Application excel = new Excel.Application();
           //  Excel.Workbook excelwb = excel.Workbooks.Open(fileName);
             //    excel.Application.Workbooks.Add(true);
@@ -881,7 +881,7 @@ namespace SmcEslSystem
             Excel.Range last = mySheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing);
             int lastUsedRow = last.Row;
             lastUsedRow = lastUsedRow + 1;
-            int col = 4;
+            int col = 5;
             DataGridViewRow row = (DataGridViewRow)dataGrid.Rows[0].Clone();
             DataGridViewCheckBoxColumn chk = new DataGridViewCheckBoxColumn();
             dataGrid.Columns.Add(chk);
@@ -958,6 +958,7 @@ namespace SmcEslSystem
             mySheet.Cells[lastUsedRow, 3] = ESLStyleNumber;
             mySheet.Cells[lastUsedRow, 2] = "";
             mySheet.Cells[lastUsedRow, 1] = styleName;
+            mySheet.Cells[lastUsedRow, 4] = size;
             //mySheet.Cells[lastUsedRow, 2] = "";
             //設置禁止彈出保存和覆蓋的詢問提示框
             mySheet.Application.DisplayAlerts = true;
@@ -1176,7 +1177,7 @@ namespace SmcEslSystem
 
         }
 
-        public bool ESLStyleCover( string StyleName,PictureBox pictureBox1, Excel.Application excel, Excel.Workbook excelwb, Excel.Worksheet mySheet)
+        public bool ESLStyleCover( string StyleName,PictureBox pictureBox1, Excel.Application excel, Excel.Workbook excelwb, Excel.Worksheet mySheet,int size)
         {
             //建立Excel
 
@@ -1234,7 +1235,7 @@ namespace SmcEslSystem
                             }
                         }
                     }*/
-            int col = 4;
+            int col = 5;
             //----------
             foreach (Control x in pictureBox1.Controls)
             {
@@ -1308,6 +1309,7 @@ namespace SmcEslSystem
             mySheet.Cells[rowNumber, 3] = Style;
             mySheet.Cells[rowNumber, 2] = Toah;
             mySheet.Cells[rowNumber, 1] = StyleName;
+            mySheet.Cells[rowNumber, 4] = size;
             //mySheet.Cells[lastUsedRow, 2] = "";
             //設置禁止彈出保存和覆蓋的詢問提示框
             mySheet.Application.DisplayAlerts = true;

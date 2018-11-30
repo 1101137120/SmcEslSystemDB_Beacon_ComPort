@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace SmcEslSystem
 {
@@ -28,13 +30,28 @@ namespace SmcEslSystem
         public string tryUpdateState;
         public string ProductStyle;
         public string actionName;
+        public string ESLSize;
+        public System.Windows.Forms.Timer TimerConnect;
+        public Stopwatch TimerSeconds;
     }
     class Page
     {
+        public string No;
         public string BeaconProduct;
+        public string ProductName;
         public string APID;
         public string ESLID;
-        public string No;
+        public DateTime SBeaconTime;
+        public DateTime EBeaconTime;
+        public string salesDay;
+        public string Comment;
+
+    }
+
+
+    class pictureboxBarcode : PictureBox
+    {
+        public string barcodedata;
 
     }
 
@@ -60,7 +77,23 @@ namespace SmcEslSystem
         public int BackColorB;
     }
 
-class BackPage
+    class Item
+    {
+         public string Name;
+         public int Value;
+        public Item(string name, int value)
+        {
+            Name = name; Value = value;
+        }
+
+        public override string ToString()
+        {
+            // Generates the text shown in the combo box
+            return Name;
+        }
+    }
+
+    class BackPage
 {
     public string NewMateESL;
     public string OldMateProduct;
@@ -75,6 +108,11 @@ class BackPage
         public int dataGridRowIndex;
     }
 
+    class OldESLFormat
+    {
+        public string FormatName;
+        public string Type;
+    }
 
 
 }

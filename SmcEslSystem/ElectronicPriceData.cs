@@ -177,7 +177,18 @@ namespace SmcEslSystem
             // }
 
 
-            Bitmap bmp = new Bitmap(212, 104);
+
+            Bitmap bmp;
+            if (ESLFormat[1] == "0")
+                bmp = new Bitmap(212, 104);
+            else if(ESLFormat[1] == "1")
+                bmp = new Bitmap(296, 128);
+            else if (ESLFormat[1] == "2")
+                bmp = new Bitmap(400, 300);
+            else
+                bmp = new Bitmap(212, 104);
+
+
             using (Graphics graphics = Graphics.FromImage(bmp))
             {
                 graphics.FillRectangle(new SolidBrush(Color.White), 0, 0, bw, bh);
@@ -256,6 +267,7 @@ namespace SmcEslSystem
 
                         if (!qrcode.Equals(""))
                         {
+                            Console.WriteLine("x:" + Convert.ToInt32(ESLFormat[i + 4]) + "    y:" + Convert.ToInt32(ESLFormat[i + 5]));
                             bmp = mSmcDataToImage.ConvertImageToImage(bmp, bqr2, Convert.ToInt32(ESLFormat[i + 4]), Convert.ToInt32(ESLFormat[i + 5])); //QRcode
                         }
 
@@ -263,7 +275,6 @@ namespace SmcEslSystem
 
 
                 }
-                Console.WriteLine("ESLFormat[i]" + ESLFormat[i]);
                 if ( ESLFormat[i] == "ESL ID")
                 {
                     if (ESLFormat[i -1 ] == "B")
@@ -582,6 +593,119 @@ namespace SmcEslSystem
                 }
             }
             return mbmp;
+        }
+
+
+        public Bitmap setESLimage_29(string MacAddress, string battery)
+        {
+            Bitmap bmp = new Bitmap(296, 128);
+            using (Graphics graphics = Graphics.FromImage(bmp))
+            {
+                graphics.FillRectangle(new SolidBrush(Color.White), 0, 0, 296, 128);
+            }
+
+            Bitmap bar = new Bitmap(290, 50);
+            BarcodeWriter barcode_w = new BarcodeWriter();
+            barcode_w.Format = BarcodeFormat.CODE_93;
+            barcode_w.Options.Width = 296;
+            barcode_w.Options.Height = 40;
+            barcode_w.Options.PureBarcode = true;
+            bar = barcode_w.Write(MacAddress);
+            bmp = mSmcDataToImage.ConvertImageToImage(bmp, bar, 4, 85); //QRcode
+
+            TextBox t1 = new TextBox();
+            t1.Text = "SMC ESL  " + battery + " V";
+            t1.Font = new Font("Cambria", 26, FontStyle.Bold);
+            t1.TextAlign = HorizontalAlignment.Center; //置中
+            t1.BorderStyle = BorderStyle.FixedSingle;
+            t1.Width = 280;
+            t1.Height = 25;
+            bmp = mSmcDataToImage.ConvertTextToImage(bmp, t1, Color.Red, 1, 0);
+
+            String StrName = String.Format("{0}", DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"));
+            t1.Text = StrName;
+            t1.Font = new Font("Cambria", 15, FontStyle.Bold);
+            t1.TextAlign = HorizontalAlignment.Center; //置中
+            t1.BorderStyle = BorderStyle.FixedSingle;
+            t1.Width = 280;
+            t1.Height = 25;
+            bmp = mSmcDataToImage.ConvertTextToImage(bmp, t1, Color.Red, 2, 35);
+
+
+            t1.Text = MacAddress;
+            t1.Font = new Font("Cambria", 20, FontStyle.Bold);
+            t1.TextAlign = HorizontalAlignment.Center; //置中
+            t1.BorderStyle = BorderStyle.FixedSingle;
+            t1.Width = 280;
+            t1.Height = 25;
+            bmp = mSmcDataToImage.ConvertTextToImage(bmp, t1, Color.Black, 2, 53);
+
+
+
+
+            return bmp;
+        }
+
+
+        public Bitmap setESLimage_42(string MacAddress, string battery)
+        {
+            Bitmap bmp = new Bitmap(400, 300);
+            using (Graphics graphics = Graphics.FromImage(bmp))
+            {
+                graphics.FillRectangle(new SolidBrush(Color.White), 0, 0, 400, 300);
+            }
+
+
+
+            TextBox t1 = new TextBox();
+            t1.Text = "SMC ESL  " + battery + " V";
+            t1.Font = new Font("Cambria", 38, FontStyle.Bold);
+            t1.TextAlign = HorizontalAlignment.Center; //置中
+            t1.BorderStyle = BorderStyle.FixedSingle;
+            t1.Width = 380;
+            t1.Height = 40;
+            bmp = mSmcDataToImage.ConvertTextToImage(bmp, t1, Color.Red, 1, 0);
+
+            String StrName = String.Format("{0}", DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"));
+            t1.Text = StrName;
+            t1.Font = new Font("Cambria", 20, FontStyle.Bold);
+            t1.TextAlign = HorizontalAlignment.Center; //置中
+            t1.BorderStyle = BorderStyle.FixedSingle;
+            t1.Width = 380;
+            t1.Height = 40;
+            bmp = mSmcDataToImage.ConvertTextToImage(bmp, t1, Color.Red, 2, 60);
+
+
+            t1.Text = MacAddress;
+            t1.Font = new Font("Cambria", 26, FontStyle.Bold);
+            t1.TextAlign = HorizontalAlignment.Center; //置中
+            t1.BorderStyle = BorderStyle.FixedSingle;
+            t1.Width = 380;
+            t1.Height = 40;
+            bmp = mSmcDataToImage.ConvertTextToImage(bmp, t1, Color.Black, 2, 85);
+
+            Bitmap bar = new Bitmap(400, 80);
+            BarcodeWriter barcode_w = new BarcodeWriter();
+            barcode_w.Format = BarcodeFormat.CODE_93;
+            barcode_w.Options.Width = 400;
+            barcode_w.Options.Height = 80;
+            barcode_w.Options.PureBarcode = true;
+            bar = barcode_w.Write(MacAddress);
+            bmp = mSmcDataToImage.ConvertImageToImage(bmp, bar, 4, 210); //QRcode
+
+
+            Bitmap qr = new Bitmap(400, 70);
+
+            barcode_w.Format = BarcodeFormat.QR_CODE;
+            barcode_w.Options.Width = 400;
+            barcode_w.Options.Height = 70;
+            barcode_w.Options.PureBarcode = true;
+            bar = barcode_w.Write("http://www.smartchip.com.tw/");
+            bmp = mSmcDataToImage.ConvertImageToImage(bmp, bar, 4, 130); //QRcode
+
+
+
+            return bmp;
         }
 
 
